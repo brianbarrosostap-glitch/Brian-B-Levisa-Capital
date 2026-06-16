@@ -5,8 +5,11 @@ const supabaseKey  = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 if (!supabaseUrl || !supabaseKey) {
   throw new Error(
-    'Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY in .env.local\n' +
-    'Copy them from Supabase Dashboard → Project Settings → API'
+    'Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY.\n' +
+    'Local dev: set them in .env.local (then restart the dev server).\n' +
+    'Vercel/production: add them under Project → Settings → Environment Variables\n' +
+    'and make sure they are enabled for the Production (and Preview) environments,\n' +
+    'then redeploy. Values come from Supabase Dashboard → Project Settings → API.'
   )
 }
 
