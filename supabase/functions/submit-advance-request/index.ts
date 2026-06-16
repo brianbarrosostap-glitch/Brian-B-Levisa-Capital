@@ -20,7 +20,7 @@
  *  - Returns the new batch record
  */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from '@supabase/supabase-js'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -134,6 +134,17 @@ Deno.serve(async (req) => {
       .in('id', invoice_ids)
 
     if (updateErr) throw updateErr
+
+    // ── Audit log: customer submitted an advance request ──────
+    await service.from('audit_logs').insert({
+      table_name: 'batches',
+      record_id: batch.id,
+      action: 'insert',
+      actor_id: user.id,
+      actor_email: user.email,
+      summary: `Advance request ${requestNumber} submitted with ${invoice_ids.length} invoice(s)`,
+      source: 'submit-advance-request',
+    })
 
     return new Response(
       JSON.stringify({ success: true, batch }),

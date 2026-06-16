@@ -137,12 +137,23 @@ TimelineStep   — single row in invoice timeline (icon, label, date, note)
 | `profiles` | Extends `auth.users`. Columns: `id` (FK → auth.users), `role` (enum), `full_name`, `initials` |
 | `clients` | One per customer company. Has `owner_id` → `profiles.id` for RLS |
 | `batches` | One advance request = one batch. Has `request_number` (REQ-YYYY-NNN format) |
-| `invoices` | Central fact table. `advance_amount` and `factoring_fee` are **generated/computed columns** |
-| `invoice_timeline` | Append-only audit log. Written automatically by DB trigger on `invoices.status` change |
+| `invoices` | Central fact table. `advance_amount` and `factoring_fee` are **generated/computed columns**. **Drive:** `drive_file_id` + `drive_file_url` point at the invoice PDF in the INVOICES Drive folder |
+| `invoice_timeline` | Append-only status log. Written automatically by DB trigger on `invoices.status` change (status + invoice only) |
 | `needs_attention` | Admin alerts: unmatched conf numbers, unreadable checks, overdue |
+| `checks` | One row per file in the CHECKS Drive folder (payment proof from Ryder). Columns: `check_number`, `amount`, `ryder_conf_number`, `drive_file_id`/`drive_file_url`, `status` (unmatched/matched/unreadable) |
+| `check_invoices` | Join table: which invoice(s) a check pays (a check can cover many invoices). PK `(check_id, invoice_id)` |
+| `audit_logs` | **Comprehensive append-only audit trail** — who did what, when, on which row, across all core tables. Written by a generic DB trigger (auto safety net, before/after JSON) **and** by edge functions (rich rows with the real human actor + note) |
+
+### Google Drive flow (two folders)
+- **Invoices folder** → invoice PDFs. Your external automation drops a file, then calls the **`ingest-invoice`** edge function, which inserts/updates the `invoices` row and stores `drive_file_id` + `drive_file_url`. **Both** admin and customer portals link to the PDF via `drive_file_url`.
+- **Checks folder** → payment-proof from Ryder. Automation calls **`ingest-check`**, which inserts a `checks` row, auto-matches to invoice(s) by `invoice_number` (→ `check_invoices`), advances matched invoices (Submitted to Ryder → Acknowledged → Paid), and records the Drive link. Customers can read checks tied to their own invoices.
+- **Where the Drive data lives:** invoice files → `invoices.drive_file_id/url`; check files → `checks.drive_file_id/url`. Nothing else stores Drive handles.
 
 ### Views
-- `v_kpi` — aggregated KPI numbers used by the admin Dashboard
+- `v_kpi` — aggregated KPI numbers used by the admin Dashboard. `overdue_60` computes "days out" live from `ryder_submitted_at`
+- `v_invoices` — `invoices.*` plus a live-computed `ryder_days_out` column
+- `v_audit_logs` — `audit_logs` newest-first, joined to `profiles` for a readable `actor_name`. Use this for the admin audit-log screen
+- `v_checks` — each check plus a comma-separated list of the invoice numbers it pays. Use this for the admin Checks screen
 
 ### Enum Types
 ```sql
@@ -155,16 +166,22 @@ batch_status:   Pending | Approved | Rejected | Partially Approved
 user_role:      admin | customer
 
 attention_type: conf_match | check_unreadable | overdue
+
+audit_action:   insert | update | delete | status_change
+
+check_status:   unmatched | matched | unreadable
 ```
 
 ### Generated Columns (do NOT try to insert into these)
 - `invoices.advance_amount` = `round(invoice_amount * advance_rate, 2)`
 - `invoices.factoring_fee` = `round(invoice_amount * (1 - advance_rate), 2)`
-- `invoices.ryder_days_out` = days since `ryder_submitted_at`
+
+> ⚠️ `ryder_days_out` is **NOT** a generated column. Postgres forbids `now()` in a stored generated expression (not immutable). "Days out" is computed live in `v_invoices` / `v_kpi` and via a frontend fallback. Do not re-add it as `generated always as (... now() ...)` — it will break the whole schema.
 
 ### Key Triggers
 - `on_auth_user_created` — auto-creates a `profiles` row when a new auth user signs up
 - `trg_invoice_status_log` — writes to `invoice_timeline` every time `invoices.status` changes
+- `trg_audit_*` (`record_audit_log`) — generic audit trigger on `invoices`, `batches`, `clients`, `needs_attention`; logs every insert/update/delete to `audit_logs` with before/after JSON. Service-role writes have no `auth.uid()`, so these rows have `actor_id = null` (`source = 'trigger'`) — the edge function then writes its own row with the real actor (`source = '<function-name>'`)
 - `set_updated_at` — updates `updated_at` on all tables before each UPDATE
 
 ### RLS
@@ -174,10 +191,12 @@ All tables have Row-Level Security enabled. Admins have full access to everythin
 
 ## Edge Functions
 
-All 4 functions live in `supabase/functions/`. Each:
-1. Reads the JWT from `Authorization` header
-2. Fetches the caller's profile to verify role (admin or customer)
-3. Uses the **service role key** (from `Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')`) for DB writes to bypass RLS
+All functions live in `supabase/functions/`. The **user-facing** ones (first four):
+1. Read the JWT from `Authorization` header
+2. Fetch the caller's profile to verify role (admin or customer)
+3. Use the **service role key** (`Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')`) for DB writes to bypass RLS
+
+The **machine ingest** ones (`ingest-*`) are called server-side by the Drive automation with the service-role key as the bearer token; they have `verify_jwt = false` in `config.toml` and verify the bearer equals the service key.
 
 | Function | Caller | What it does |
 |---|---|---|
@@ -185,6 +204,8 @@ All 4 functions live in `supabase/functions/`. Each:
 | `submit-advance-request` | customer | Creates a new batch with REQ-YYYY-NNN number, links invoices, sets status to "Payment Requested" |
 | `match-confirmation` | admin | Links `ryder_conf_number` or `check_number` to invoice, advances status (Submitted→Acknowledged, or →Paid), marks `needs_attention` resolved |
 | `mark-invoice-status` | admin | General status override. Actions: `mark_paid_override`, `set_void`, `mark_ryder_paid`, `resubmit`, `mark_advance_paid` |
+| `ingest-invoice` | Drive automation (service role) | Invoice PDF dropped in the INVOICES folder → upsert `invoices` row + store `drive_file_id`/`drive_file_url` |
+| `ingest-check` | Drive automation (service role) | Check file dropped in the CHECKS folder → create `checks` row, auto-match to invoice(s) by `invoice_number`, link via `check_invoices`, advance matched invoices |
 
 **Invoking from React:**
 ```js

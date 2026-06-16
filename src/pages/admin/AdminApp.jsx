@@ -1,17 +1,20 @@
 import React, { useState } from 'react'
-import { LayoutDashboard, ListOrdered, LogOut } from 'lucide-react'
+import { LayoutDashboard, ListOrdered, Receipt, LogOut } from 'lucide-react'
 import { Shell, Topbar, PageContent } from '../../components/ui'
 import Dashboard from './Dashboard'
 import Master from './Master'
+import Checks from './Checks'
 
 const NAV = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'master',    label: 'Master',    icon: ListOrdered, badge: 7 },
+  { key: 'checks',    label: 'Checks',    icon: Receipt },
 ]
 
 const TITLES = {
   dashboard: { title: 'Dashboard' },
   master:    { title: 'Master', subtitle: 'All invoice records' },
+  checks:    { title: 'Checks', subtitle: 'Payment proof from Ryder (Drive)' },
 }
 
 export default function AdminApp({ user, onSignOut }) {
@@ -84,6 +87,7 @@ export default function AdminApp({ user, onSignOut }) {
       <PageContent>
         {page === 'dashboard' && <Dashboard />}
         {page === 'master'    && <Master />}
+        {page === 'checks'    && <Checks />}
       </PageContent>
     </Shell>
   )

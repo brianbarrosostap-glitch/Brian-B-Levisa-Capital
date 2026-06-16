@@ -24,7 +24,7 @@
  *  - Returns updated invoice
  */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from '@supabase/supabase-js'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -133,6 +133,22 @@ Deno.serve(async (req) => {
       .from('needs_attention')
       .update({ resolved: true, resolved_at: now, resolved_by: user.id })
       .eq('id', attention_id)
+
+    // ── Audit log: confirmation / check matched ───────────────
+    const matchValue = conf_number || check_number
+    const matchKind = conf_number ? 'Ryder conf #' : 'check #'
+    await service.from('audit_logs').insert({
+      table_name: 'invoices',
+      record_id: invoice_id,
+      action: 'status_change',
+      actor_id: user.id,
+      actor_email: user.email,
+      invoice_number: updatedInvoice.invoice_number,
+      new_status: updatedInvoice.status,
+      summary: `Matched ${matchKind}${matchValue} → invoice ${updatedInvoice.invoice_number} `
+        + `(now ${updatedInvoice.status}); attention item resolved`,
+      source: 'match-confirmation',
+    })
 
     return new Response(
       JSON.stringify({ success: true, invoice: updatedInvoice }),

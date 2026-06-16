@@ -20,6 +20,7 @@ export default function App() {
   const [session, setSession]   = useState(undefined)  // undefined = loading
   const [profile, setProfile]   = useState(null)
   const [profLoading, setProfLoading] = useState(false)
+  const [profError, setProfError] = useState('')
 
   // ── Subscribe to auth state ──────────────────────────────────
   useEffect(() => {
@@ -31,7 +32,10 @@ export default function App() {
     // Listen for login / logout
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
-      if (!session) setProfile(null)
+      if (!session) {
+        setProfile(null)
+        setProfError('')
+      }
     })
 
     return () => subscription.unsubscribe()
@@ -41,16 +45,31 @@ export default function App() {
   useEffect(() => {
     if (!session?.user) return
 
+    let cancelled = false
     setProfLoading(true)
+    setProfError('')
+
     supabase
       .from('profiles')
       .select('role, full_name, initials')
       .eq('id', session.user.id)
       .single()
       .then(({ data, error }) => {
-        if (!error && data) setProfile(data)
+        if (cancelled) return
+        if (error) {
+          // Surface the real failure instead of hanging on a spinner.
+          console.error('Profile fetch failed:', error)
+          setProfError(error.message || 'Could not load your profile.')
+          setProfile(null)
+        } else if (data) {
+          setProfile(data)
+        } else {
+          setProfError('No profile row found for this account. Run the seed step in Supabase.')
+        }
         setProfLoading(false)
       })
+
+    return () => { cancelled = true }
   }, [session])
 
   // ── Loading splash ───────────────────────────────────────────
@@ -61,6 +80,16 @@ export default function App() {
   // ── Not logged in ────────────────────────────────────────────
   if (!session) {
     return <Login />
+  }
+
+  // ── Profile fetch errored — show it, don't hang ──────────────
+  if (profError) {
+    return (
+      <ErrorScreen
+        message={profError}
+        onSignOut={() => supabase.auth.signOut()}
+      />
+    )
   }
 
   // ── Logged in but profile not yet loaded ─────────────────────
@@ -93,6 +122,27 @@ export default function App() {
         style={{ marginTop: 8, padding: '8px 18px', borderRadius: 7, border: 'none', background: C.primary, color: '#fff', fontWeight: 600, cursor: 'pointer' }}
       >
         Sign Out
+      </button>
+    </div>
+  )
+}
+
+function ErrorScreen({ message, onSignOut }) {
+  return (
+    <div style={{
+      minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+      background: '#f2f5f8', flexDirection: 'column', gap: 12, padding: 24, textAlign: 'center',
+    }}>
+      <div style={{ fontSize: 15, fontWeight: 700, color: C.red }}>Couldn't load your account</div>
+      <div style={{ fontSize: 13, color: C.textSm, maxWidth: 420, lineHeight: 1.5 }}>
+        {message}
+      </div>
+      <button
+        onClick={onSignOut}
+        style={{ marginTop: 8, padding: '8px 18px', borderRadius: 7, border: 'none', background: C.primary, color: '#fff', fontWeight: 600, cursor: 'pointer' }}
+      >
+        Sign Out & Retry
       </button>
     </div>
   )

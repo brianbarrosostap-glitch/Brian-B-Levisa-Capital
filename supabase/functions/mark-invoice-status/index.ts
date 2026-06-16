@@ -17,7 +17,7 @@
  * }
  */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from '@supabase/supabase-js'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -140,6 +140,21 @@ Deno.serve(async (req) => {
         note,
       })
     }
+
+    // ── Rich audit log entry (real human actor) ───────────────
+    await service.from('audit_logs').insert({
+      table_name: 'invoices',
+      record_id: invoice_id,
+      action: inv.status === updated.status ? 'update' : 'status_change',
+      actor_id: user.id,
+      actor_email: user.email,
+      invoice_number: updated.invoice_number,
+      old_status: inv.status,
+      new_status: updated.status,
+      summary: `Admin action "${action}" → invoice ${updated.invoice_number}: ${inv.status} → ${updated.status}`
+        + (note ? ` (note: ${note})` : ''),
+      source: 'mark-invoice-status',
+    })
 
     return new Response(
       JSON.stringify({ success: true, invoice: updated }),

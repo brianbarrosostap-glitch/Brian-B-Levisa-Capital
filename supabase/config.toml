@@ -39,6 +39,38 @@ enable_signup = true
 double_confirm_changes = true
 enable_confirmations = false   # set true in production
 
-[functions]
-# Deno version used by all edge functions
-deno_version = "1.45.0"
+# =============================================================
+# Edge Functions
+# One [functions.<name>] block per function. verify_jwt = true
+# means Supabase rejects the request unless a valid user JWT is
+# present in the Authorization header — every function here reads
+# req.headers.get('Authorization') and calls auth.getUser(), so
+# JWT verification MUST stay on.
+#
+# NOTE on secrets: SUPABASE_URL, SUPABASE_ANON_KEY and
+# SUPABASE_SERVICE_ROLE_KEY are RESERVED — the platform injects
+# them into every function automatically. Never put them in a
+# function .env or `supabase secrets set` (the CLI rejects the
+# SUPABASE_ prefix). Only add your OWN custom secrets there.
+# =============================================================
+
+[functions.approve-batch]
+verify_jwt = true
+
+[functions.submit-advance-request]
+verify_jwt = true
+
+[functions.match-confirmation]
+verify_jwt = true
+
+[functions.mark-invoice-status]
+verify_jwt = true
+
+# Machine ingest endpoints called by the Drive automation with the
+# service-role key (NOT a browser user JWT), so verify_jwt is off and
+# the function itself checks the bearer token equals the service key.
+[functions.ingest-invoice]
+verify_jwt = false
+
+[functions.ingest-check]
+verify_jwt = false

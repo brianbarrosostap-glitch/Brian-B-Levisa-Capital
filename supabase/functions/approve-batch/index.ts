@@ -22,7 +22,7 @@
  *      • Batch status = Rejected
  */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from '@supabase/supabase-js'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -110,6 +110,18 @@ Deno.serve(async (req) => {
         .update({ status: 'Rejected', reviewed_at: new Date().toISOString(), reviewed_by: user.id })
         .eq('id', batch_id)
 
+      await admin.from('audit_logs').insert({
+        table_name: 'batches',
+        record_id: batch_id,
+        action: 'status_change',
+        actor_id: user.id,
+        actor_email: user.email,
+        old_status: 'Pending',
+        new_status: 'Rejected',
+        summary: `Batch rejected — ${allInvoiceIds.length} invoice(s) reverted to Eligible`,
+        source: 'approve-batch',
+      })
+
       return new Response(JSON.stringify({ success: true, batch_status: 'Rejected' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -152,6 +164,19 @@ Deno.serve(async (req) => {
         reviewed_by: user.id,
       })
       .eq('id', batch_id)
+
+    await admin.from('audit_logs').insert({
+      table_name: 'batches',
+      record_id: batch_id,
+      action: 'status_change',
+      actor_id: user.id,
+      actor_email: user.email,
+      old_status: 'Pending',
+      new_status: batchStatus,
+      summary: `Batch ${batchStatus.toLowerCase()} — `
+        + `${approved_invoice_ids.length} approved (Advance Confirmed), ${rejectedIds.length} reverted to Eligible`,
+      source: 'approve-batch',
+    })
 
     return new Response(
       JSON.stringify({

@@ -18,8 +18,16 @@ export default function Login() {
     const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password })
 
     if (signInErr) {
-      // Supabase returns "Invalid login credentials" for wrong email/password
-      setError('Incorrect email or password. Please try again.')
+      const msg = signInErr.message || ''
+      if (/email not confirmed/i.test(msg)) {
+        // Hosted project has email confirmations on and this user hasn't verified.
+        setError('Your email isn’t verified yet. Check your inbox for the confirmation link, or have an admin confirm the user in Supabase → Authentication → Users.')
+      } else if (/invalid login credentials/i.test(msg)) {
+        setError('Incorrect email or password. Please try again.')
+      } else {
+        // Surface anything unexpected (network, rate limit, config) instead of masking it.
+        setError(msg || 'Sign-in failed. Please try again.')
+      }
     }
     // On success, onAuthStateChange in App.jsx will receive the session
     // and route to the correct portal automatically — no action needed here.
@@ -173,9 +181,9 @@ export default function Login() {
         marginTop: 20, display: 'flex', gap: 16,
         fontSize: 11.5, color: C.textMut,
       }}>
-        <span>🏢 Admin: brian@levisacapital.com</span>
+        <span>🏢 Admin: divyanshu.sharma@growwstacks.com</span>
         <span>·</span>
-        <span>📄 Client: sarah@rzrinc.com</span>
+        <span>📄 Client: divyanshutest2@gmail.com</span>
       </div>
     </div>
   )

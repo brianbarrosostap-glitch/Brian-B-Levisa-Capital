@@ -1,14 +1,33 @@
 import React, { useState, useEffect } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, ExternalLink } from 'lucide-react'
 import { C } from '../../tokens'
 import { Modal, ModalBody, ModalFooter, Btn, Badge, Field, TimelineStep } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+const DriveLink = ({ url, label = 'View' }) => (
+  <a
+    href={url || '#'}
+    target={url ? '_blank' : undefined}
+    rel="noreferrer"
+    onClick={!url ? e => e.preventDefault() : undefined}
+    style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      background: '#eff6ff', border: `1px solid ${C.border}`,
+      borderRadius: 6, color: url ? '#1e40af' : C.textMut, fontSize: 12,
+      padding: '4px 10px', textDecoration: 'none', fontWeight: 600,
+      cursor: url ? 'pointer' : 'default', opacity: url ? 1 : 0.5,
+    }}
+  >
+    <ExternalLink size={11} /> {label}
+  </a>
+)
+
 export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh }) {
   const [detail, setDetail]   = useState(null)
   const [timeline, setTimeline] = useState([])
+  const [checks, setChecks]   = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -18,7 +37,7 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
 
   const fetchDetail = async () => {
     setLoading(true)
-    const [{ data: invData }, { data: tl }] = await Promise.all([
+    const [{ data: invData }, { data: tl }, { data: chk }] = await Promise.all([
       supabase
         .from('invoices')
         .select(`*, client:clients(name, debtor, contact_name, contact_email, factoring_rate, advance_rate)`)
@@ -29,9 +48,15 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
         .select('status, occurred_at, note')
         .eq('invoice_id', inv.id)
         .order('occurred_at', { ascending: true }),
+      // Checks linked to this invoice (payment proof from Ryder, via Drive)
+      supabase
+        .from('check_invoices')
+        .select('check:checks(id, check_number, ryder_conf_number, amount, status, drive_file_url, received_at)')
+        .eq('invoice_id', inv.id),
     ])
     if (invData) setDetail(invData)
     if (tl)     setTimeline(tl)
+    if (chk)    setChecks(chk.map(r => r.check).filter(Boolean))
     setLoading(false)
   }
 
@@ -136,6 +161,37 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
                     </span>
                     <span style={{ fontSize: 17, fontWeight: 800, color: C.primary, fontVariantNumeric: 'tabular-nums' }}>{fmt(d.advance_amount)}</span>
                   </div>
+                </div>
+              </div>
+
+              {/* Invoice File & Payment Proof (Google Drive) */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.textSm, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Files &amp; Payment Proof</div>
+                <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
+                  {/* Invoice PDF */}
+                  <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+                    <span style={{ color: C.textSm }}>Invoice document</span>
+                    <DriveLink url={d.drive_file_url} label={d.drive_file_url ? 'View Invoice' : 'Not uploaded'} />
+                  </div>
+                  {/* Linked checks */}
+                  {checks.length === 0 ? (
+                    <div style={{ padding: '10px 14px', fontSize: 12.5, color: C.textMut }}>
+                      No checks linked yet — appears once Ryder’s payment lands in the Checks Drive folder.
+                    </div>
+                  ) : (
+                    checks.map(c => (
+                      <div key={c.id} style={{ padding: '10px 14px', borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                        <div style={{ fontSize: 12.5 }}>
+                          <span style={{ fontWeight: 600, color: C.text }}>Check {c.check_number || '(no #)'}</span>
+                          <span style={{ color: C.textMut }}>
+                            {c.ryder_conf_number ? ` · conf ${c.ryder_conf_number}` : ''}
+                            {c.amount != null ? ` · ${fmt(c.amount)}` : ''}
+                          </span>
+                        </div>
+                        <DriveLink url={c.drive_file_url} label="View Check" />
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
 

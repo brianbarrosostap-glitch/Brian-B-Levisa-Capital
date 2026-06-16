@@ -1,10 +1,10 @@
 -- =============================================================
 -- Levisa Capital — Seed Data
 -- Run this AFTER:
---   1. Running 20260616000001_initial_schema.sql
+--   1. Running FRESH_RESET.sql
 --   2. Creating auth users in Dashboard → Authentication → Users:
---        brian@levisacapital.com  (any password)
---        sarah@rzrinc.com         (any password)
+--        divyanshu.sharma@growwstacks.com  (admin)    (any password)
+--        divyanshutest2@gmail.com          (customer) (any password)
 -- =============================================================
 
 do $$
@@ -16,22 +16,22 @@ declare
 begin
 
   -- Look up the auth user IDs by email
-  select id into v_admin_id    from auth.users where email = 'brian@levisacapital.com' limit 1;
-  select id into v_customer_id from auth.users where email = 'sarah@rzrinc.com'        limit 1;
+  select id into v_admin_id    from auth.users where email = 'divyanshu.sharma@growwstacks.com' limit 1;
+  select id into v_customer_id from auth.users where email = 'divyanshutest2@gmail.com'         limit 1;
 
   if v_admin_id is null then
-    raise exception 'brian@levisacapital.com not found in auth.users — create the user first.';
+    raise exception 'divyanshu.sharma@growwstacks.com not found in auth.users — create the user first.';
   end if;
 
   if v_customer_id is null then
-    raise exception 'sarah@rzrinc.com not found in auth.users — create the user first.';
+    raise exception 'divyanshutest2@gmail.com not found in auth.users — create the user first.';
   end if;
 
   -- ── Profiles (set roles) ────────────────────────────────────
   insert into public.profiles (id, role, full_name, initials)
   values
-    (v_admin_id,    'admin',    'Brian Levisa',   'BL'),
-    (v_customer_id, 'customer', 'Sarah Mitchell', 'SM')
+    (v_admin_id,    'admin',    'Divyanshu Sharma', 'DS'),
+    (v_customer_id, 'customer', 'Sarah Mitchell',   'SM')
   on conflict (id) do update set
     role      = excluded.role,
     full_name = excluded.full_name,
@@ -41,7 +41,7 @@ begin
   insert into public.clients
     (name, debtor, contact_name, contact_email, factoring_rate, advance_rate, owner_id)
   values
-    ('RZR Inc', 'Ryder Systems', 'Sarah Mitchell', 'sarah@rzrinc.com', 0.03, 0.97, v_customer_id)
+    ('RZR Inc', 'Ryder Systems', 'Sarah Mitchell', 'divyanshutest2@gmail.com', 0.03, 0.97, v_customer_id)
   on conflict (name) do update set owner_id = excluded.owner_id
   returning id into v_client_id;
 
