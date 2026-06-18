@@ -6,6 +6,18 @@ import { supabase, callFunction } from '../../lib/supabase'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+// "Remove" on the customer list is UI-only (the invoice stays in Drive / DB).
+// We persist hidden ids in localStorage so a removed row stays hidden on refresh.
+const HIDE_KEY = 'customer.hiddenInvoices'
+const getHidden = () => {
+  try { return new Set(JSON.parse(localStorage.getItem(HIDE_KEY) || '[]')) }
+  catch { return new Set() }
+}
+const hideInvoice = (id) => {
+  const h = getHidden(); h.add(id)
+  localStorage.setItem(HIDE_KEY, JSON.stringify([...h]))
+}
+
 const DriveBadge = ({ url }) => (
   <a href={url || '#'} target={url ? '_blank' : undefined} rel="noreferrer" onClick={!url ? e => e.preventDefault() : undefined} style={{
     display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -46,17 +58,22 @@ function RemoveModal({ inv, onClose, onConfirm }) {
 /* ── Submit Confirmation Modal ── */
 function SubmitModal({ selected, onClose, onSubmit }) {
   const [loading, setLoading] = useState(false)
+  const [error, setError]     = useState('')
   const total = selected.reduce((s, i) => s + Number(i.invoice_amount), 0)
   const adv   = selected.reduce((s, i) => s + Number(i.advance_amount), 0)
   const fee   = total - adv
 
   const handleSubmit = async () => {
     setLoading(true)
+    setError('')
     try {
       await callFunction('submit-advance-request', { invoice_ids: selected.map(i => i.id) })
       onSubmit()
       onClose()
-    } catch (e) { console.error(e) }
+    } catch (e) {
+      console.error(e)
+      setError(e?.message || 'Could not submit the request. Please try again.')
+    }
     setLoading(false)
   }
 
@@ -101,6 +118,11 @@ function SubmitModal({ selected, onClose, onSubmit }) {
         <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 13px', fontSize: 12.5, color: '#1e40af', marginTop: 10 }}>
           Funds are wired after Levisa reviews and confirms. Your invoices will show as <strong>Submitted</strong> until then.
         </div>
+        {error && (
+          <div style={{ background: '#fff5f5', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 13px', fontSize: 12.5, color: '#991b1b', marginTop: 10 }}>
+            {error}
+          </div>
+        )}
       </ModalBody>
       <ModalFooter>
         <Btn variant="ghost" onClick={onClose}>Go back</Btn>
@@ -138,7 +160,9 @@ export default function InvoicesToAdvance() {
       .order('invoice_date', { ascending: false })
 
     if (data) {
-      setInvoices(data)
+      // Respect locally-hidden invoices (UI-only "remove", persisted across refresh).
+      const hidden = getHidden()
+      setInvoices(data.filter(i => !hidden.has(i.id)))
       setSyncedAt(new Date())
     }
     setLoading(false)
@@ -158,7 +182,6 @@ export default function InvoicesToAdvance() {
 
   const selectedInvoices = invoices.filter(i => selected.has(i.id))
   const totalAmount = selectedInvoices.reduce((s, i) => s + Number(i.invoice_amount), 0)
-  const totalAdv    = selectedInvoices.reduce((s, i) => s + Number(i.advance_amount), 0)
 
   const minutesAgo = syncedAt ? Math.floor((Date.now() - syncedAt) / 60000) : null
 
@@ -181,7 +204,8 @@ export default function InvoicesToAdvance() {
         {loading ? (
           <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>Loading invoices…</div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
             <thead>
               <tr>
                 <TH style={{ width: 44, textAlign: 'center' }}>
@@ -193,8 +217,7 @@ export default function InvoicesToAdvance() {
                 <TH>Invoice #</TH>
                 <TH>Unit #</TH>
                 <TH style={{ textAlign: 'right' }}>Invoice Amount</TH>
-                <TH style={{ textAlign: 'right' }}>Advance @97%</TH>
-                <TH>Invoice</TH>
+                <TH style={{ textAlign: 'center' }}>Invoice</TH>
                 <TH style={{ width: 32 }} />
               </tr>
             </thead>
@@ -217,8 +240,7 @@ export default function InvoicesToAdvance() {
                     <TD mono>{inv.invoice_number}</TD>
                     <TD muted>{inv.unit_number}</TD>
                     <TD style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(inv.invoice_amount)}</TD>
-                    <TD accent style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(inv.advance_amount)}</TD>
-                    <TD onClick={e => e.stopPropagation()}><DriveBadge url={inv.drive_file_url} /></TD>
+                    <TD style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}><DriveBadge url={inv.drive_file_url} /></TD>
                     <TD style={{ padding: '6px 8px' }} onClick={e => e.stopPropagation()}>
                       <button onClick={() => setRemoveModal(inv)} style={{ width: 24, height: 24, borderRadius: 5, border: `1px solid ${C.border}`, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <X size={12} color={C.textMut} />
@@ -228,16 +250,17 @@ export default function InvoicesToAdvance() {
                 )
               })}
               {invoices.length === 0 && (
-                <tr><td colSpan={8} style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>No eligible invoices found.</td></tr>
+                <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>No eligible invoices found.</td></tr>
               )}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
 
       {/* Sticky Action Bar */}
-      <div style={{ position: 'sticky', bottom: 16, marginTop: 16, background: C.sidebar, borderRadius: 10, padding: '13px 22px', boxShadow: '0 2px 20px rgba(0,0,0,0.14)', display: 'flex', alignItems: 'center', gap: 24 }}>
-        <div style={{ display: 'flex', gap: 28, flex: 1 }}>
+      <div style={{ position: 'sticky', bottom: 16, marginTop: 16, background: C.sidebar, borderRadius: 10, padding: '13px 22px', boxShadow: '0 2px 20px rgba(0,0,0,0.14)', display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 28, flex: 1, minWidth: 200 }}>
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Selected</div>
             <div style={{ fontSize: 17, fontWeight: 700, color: '#fff' }}>{selectedInvoices.length} of {invoices.length}</div>
@@ -246,15 +269,11 @@ export default function InvoicesToAdvance() {
             <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Invoice Total</div>
             <div style={{ fontSize: 17, fontWeight: 700, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>{fmt(totalAmount)}</div>
           </div>
-          <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Total Advance @97%</div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: '#6ee7b7', fontVariantNumeric: 'tabular-nums' }}>{fmt(totalAdv)}</div>
-          </div>
         </div>
         <button
           onClick={() => selectedInvoices.length > 0 && setSubmitModal(true)}
           disabled={selectedInvoices.length === 0}
-          style={{ padding: '10px 22px', borderRadius: 8, border: 'none', background: selectedInvoices.length === 0 ? 'rgba(255,255,255,0.25)' : '#fff', color: selectedInvoices.length === 0 ? 'rgba(255,255,255,0.4)' : C.primary, fontWeight: 700, fontSize: 13.5, cursor: selectedInvoices.length === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+          style={{ padding: '10px 22px', borderRadius: 8, border: 'none', background: selectedInvoices.length === 0 ? 'rgba(255,255,255,0.25)' : '#fff', color: selectedInvoices.length === 0 ? 'rgba(255,255,255,0.4)' : C.primary, fontWeight: 700, fontSize: 13.5, cursor: selectedInvoices.length === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', flexShrink: 0 }}
         >
           Submit Advance Request
         </button>
@@ -263,6 +282,7 @@ export default function InvoicesToAdvance() {
       {removeModal && (
         <RemoveModal inv={removeModal} onClose={() => setRemoveModal(null)}
           onConfirm={() => {
+            hideInvoice(removeModal.id)
             setInvoices(prev => prev.filter(i => i.id !== removeModal.id))
             setSelected(prev => { const n = new Set(prev); n.delete(removeModal.id); return n })
           }}

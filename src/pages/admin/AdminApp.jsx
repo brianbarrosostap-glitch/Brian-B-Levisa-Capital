@@ -1,29 +1,55 @@
-import React, { useState } from 'react'
-import { LayoutDashboard, ListOrdered, Receipt, LogOut } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { LayoutDashboard, ListOrdered, Receipt, ScrollText } from 'lucide-react'
 import { Shell, Topbar, PageContent } from '../../components/ui'
+import NotificationBell from '../../components/NotificationBell'
+import { supabase } from '../../lib/supabase'
 import Dashboard from './Dashboard'
 import Master from './Master'
 import Checks from './Checks'
+import AuditLogs from './AuditLogs'
 
 const NAV = [
-  { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { key: 'master',    label: 'Master',    icon: ListOrdered, badge: 7 },
-  { key: 'checks',    label: 'Checks',    icon: Receipt },
+  { key: 'dashboard', label: 'Dashboard',  icon: LayoutDashboard },
+  { key: 'master',    label: 'Master',     icon: ListOrdered },
+  { key: 'cheques',   label: 'Cheques',    icon: Receipt },
+  { key: 'audit',     label: 'Audit Logs', icon: ScrollText },
 ]
 
 const TITLES = {
   dashboard: { title: 'Dashboard' },
   master:    { title: 'Master', subtitle: 'All invoice records' },
-  checks:    { title: 'Checks', subtitle: 'Payment proof from Ryder (Drive)' },
+  cheques:   { title: 'Cheques', subtitle: 'Payment proof from Ryder (Drive)' },
+  audit:     { title: 'Audit Logs', subtitle: 'Who did what, when' },
 }
 
 export default function AdminApp({ user, onSignOut }) {
-  const [page, setPage] = useState('dashboard')
+  // Persist the active tab so a refresh stays on the same screen.
+  const VALID = ['dashboard', 'master', 'cheques', 'audit']
+  const [page, setPage] = useState(() => {
+    const saved = localStorage.getItem('admin.page')
+    return VALID.includes(saved) ? saved : 'dashboard'
+  })
+  const [attnCount, setAttnCount] = useState(null)
+
+  useEffect(() => { localStorage.setItem('admin.page', page) }, [page])
+
+  // Live count of unresolved Needs-Attention items (was hardcoded to 7).
+  useEffect(() => {
+    const load = async () => {
+      const { count } = await supabase
+        .from('needs_attention')
+        .select('id', { count: 'exact', head: true })
+        .eq('resolved', false)
+      setAttnCount(count ?? 0)
+    }
+    load()
+  }, [page])
 
   const NavItems = (
     <>
       {NAV.map(n => {
         const Icon = n.icon
+        const badge = n.key === 'master' && attnCount ? attnCount : null
         return (
           <button key={n.key} onClick={() => setPage(n.key)} style={{
             display: 'flex', alignItems: 'center', gap: 9, width: '100%',
@@ -35,26 +61,14 @@ export default function AdminApp({ user, onSignOut }) {
           }}>
             <Icon size={16} />
             <span style={{ flex: 1 }}>{n.label}</span>
-            {n.badge != null && (
+            {badge != null && (
               <span style={{ background: '#dc2626', color: '#fff', borderRadius: 9999, fontSize: 10, fontWeight: 700, padding: '1px 6px' }}>
-                {n.badge}
+                {badge}
               </span>
             )}
           </button>
         )
       })}
-
-      {/* Sign out at bottom of nav */}
-      <button onClick={onSignOut} style={{
-        display: 'flex', alignItems: 'center', gap: 9, width: '100%',
-        padding: '8px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
-        background: 'transparent', color: 'rgba(255,255,255,0.38)',
-        fontWeight: 400, fontSize: 13.5, marginTop: 8,
-        fontFamily: 'Inter, system-ui, -apple-system, sans-serif', textAlign: 'left',
-      }}>
-        <LogOut size={15} />
-        <span>Sign Out</span>
-      </button>
     </>
   )
 
@@ -66,7 +80,7 @@ export default function AdminApp({ user, onSignOut }) {
   }
 
   return (
-    <Shell nav={NavItems} user={userInfo}>
+    <Shell nav={NavItems} user={userInfo} onSignOut={onSignOut}>
       <Topbar title={t.title} subtitle={t.subtitle}>
         {page === 'master' && (
           <button style={{
@@ -83,11 +97,13 @@ export default function AdminApp({ user, onSignOut }) {
             Export CSV
           </button>
         )}
+        <NotificationBell />
       </Topbar>
       <PageContent>
         {page === 'dashboard' && <Dashboard />}
         {page === 'master'    && <Master />}
-        {page === 'checks'    && <Checks />}
+        {page === 'cheques'   && <Checks />}
+        {page === 'audit'     && <AuditLogs />}
       </PageContent>
     </Shell>
   )

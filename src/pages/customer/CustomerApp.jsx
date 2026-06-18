@@ -1,6 +1,7 @@
-import React, { useState } from 'react'
-import { FileText, CheckSquare, LogOut } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { FileText, CheckSquare } from 'lucide-react'
 import { Shell, Topbar, PageContent } from '../../components/ui'
+import NotificationBell from '../../components/NotificationBell'
 import InvoicesToAdvance from './InvoicesToAdvance'
 import AdvancedInvoices from './AdvancedInvoices'
 
@@ -15,7 +16,9 @@ const TITLES = {
 }
 
 export default function CustomerApp({ user, onSignOut }) {
-  const [page, setPage] = useState('invoices')
+  const [page, setPage] = useState(() => localStorage.getItem('customer.page') || 'invoices')
+
+  useEffect(() => { localStorage.setItem('customer.page', page) }, [page])
 
   const initials = user?.initials
     || user?.full_name?.split(' ').map(w => w[0]).join('')
@@ -39,17 +42,6 @@ export default function CustomerApp({ user, onSignOut }) {
           </button>
         )
       })}
-
-      <button onClick={onSignOut} style={{
-        display: 'flex', alignItems: 'center', gap: 9, width: '100%',
-        padding: '8px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
-        background: 'transparent', color: 'rgba(255,255,255,0.38)',
-        fontWeight: 400, fontSize: 13.5, marginTop: 8,
-        fontFamily: 'Inter, system-ui, -apple-system, sans-serif', textAlign: 'left',
-      }}>
-        <LogOut size={15} />
-        <span>Sign Out</span>
-      </button>
     </>
   )
 
@@ -59,22 +51,16 @@ export default function CustomerApp({ user, onSignOut }) {
     <Shell
       nav={NavItems}
       user={{ name: user?.full_name || 'Sarah Mitchell', role: 'RZR Inc', initials }}
+      onSignOut={onSignOut}
     >
       <Topbar title={t.title}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{
-            width: 29, height: 29, borderRadius: '50%', background: '#eaf4ef',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 11, fontWeight: 700, color: '#007953',
-          }}>
-            {initials}
-          </div>
-          <div style={{ fontSize: 12.5, fontWeight: 600, color: '#0d1b14' }}>
-            {user?.full_name || 'Sarah Mitchell'}
-          </div>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8fa3b0" strokeWidth="2">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
+        <NotificationBell role="customer" />
+        <div style={{
+          width: 29, height: 29, borderRadius: '50%', background: '#eaf4ef',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 11, fontWeight: 700, color: '#007953', flexShrink: 0,
+        }}>
+          {initials}
         </div>
       </Topbar>
       <PageContent>

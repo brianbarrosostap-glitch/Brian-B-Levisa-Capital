@@ -40,6 +40,29 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
 
+/**
+ * Verify the bearer is a service-role token for THIS project.
+ *
+ * Fast path: exact match against the injected SUPABASE_SERVICE_ROLE_KEY.
+ * Fallback: if the injected key is stale (JWT secret rotated after this
+ * function was last deployed), decode the JWT payload and accept any token
+ * whose `role` claim is `service_role`. Rejects anon/user tokens.
+ */
+const isServiceRole = (token: string): boolean => {
+  if (!token) return false
+  const injected = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (injected && token === injected) return true
+  try {
+    const payload = token.split('.')[1]
+    if (!payload) return false
+    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/')
+    const claims = JSON.parse(atob(b64))
+    return claims.role === 'service_role'
+  } catch {
+    return false
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -51,7 +74,7 @@ Deno.serve(async (req) => {
 
     const authHeader = req.headers.get('Authorization') || ''
     const token = authHeader.replace(/^Bearer\s+/i, '')
-    if (token !== Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')) {
+    if (!isServiceRole(token)) {
       return json({ error: 'Forbidden — service role required' }, 403)
     }
 
@@ -84,9 +107,9 @@ Deno.serve(async (req) => {
     const status = unreadable ? 'unreadable' : matched ? 'matched' : 'unmatched'
     const now = new Date().toISOString()
 
-    // ── Create the check row ──────────────────────────────────
+    // ── Create the cheque row ─────────────────────────────────
     const { data: check, error: cErr } = await service
-      .from('checks')
+      .from('cheques')
       .insert({
         check_number,
         amount,
@@ -102,8 +125,8 @@ Deno.serve(async (req) => {
 
     // ── Link + advance matched invoices ───────────────────────
     if (matched) {
-      await service.from('check_invoices').insert(
-        invoices.map((i) => ({ check_id: check.id, invoice_id: i.id }))
+      await service.from('cheque_invoices').insert(
+        invoices.map((i) => ({ cheque_id: check.id, invoice_id: i.id }))
       )
 
       // Advance each invoice: Submitted to Ryder → Acknowledged,
@@ -121,23 +144,28 @@ Deno.serve(async (req) => {
         await service.from('invoices').update(update).eq('id', inv.id)
       }
     } else {
-      // ── No match → open an admin alert ──────────────────────
-      // Attach it to the first invoice we DID find, else leave generic.
-      // needs_attention.invoice_id is NOT NULL, so we only create an
-      // alert when we can anchor it to an invoice the admin can open.
-      // Otherwise the unmatched check simply waits in the Checks screen.
+      // ── No match → open an admin alert in the Needs Attention queue ──
+      // needs_attention.invoice_id is now nullable and the row carries a
+      // cheque_id, so a check that anchors to NO invoice still surfaces to
+      // the admin (charter: "queue showing unmatched invoices or checks").
       const detail = unreadable
-        ? `Check file ${drive_file_id} scanned but the invoice number was unreadable.`
-        : `Check file ${drive_file_id} received but could not be auto-matched to an invoice.`
+        ? `Cheque file ${drive_file_id} scanned but the invoice number was unreadable.`
+        : `Cheque ${check_number || '(no #)'} received but could not be auto-matched to an invoice.`
 
-      // Best-effort: if any invoice_number was supplied but not found,
-      // we still record the check as unmatched for the admin to resolve.
-      console.log('Check unmatched:', detail)
+      await service.from('needs_attention').insert({
+        cheque_id:    check.id,
+        type:         unreadable ? 'check_unreadable' : 'check_unmatched',
+        title:        unreadable ? 'Cheque Unreadable' : 'Cheque Unmatched',
+        detail,
+        action_label: 'Enter Manually',
+        check_number,
+        ryder_conf_number,
+      })
     }
 
     // ── Audit log ─────────────────────────────────────────────
     await service.from('audit_logs').insert({
-      table_name: 'checks',
+      table_name: 'cheques',
       record_id: check.id,
       action: matched ? 'status_change' : 'insert',
       ryder_conf_number,

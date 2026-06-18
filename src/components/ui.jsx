@@ -6,8 +6,21 @@ import {
   MoreVertical, Check, Upload, Inbox, ChevronRight, ExternalLink,
   BarChart2, Clock, DollarSign, Users, TrendingUp, ArrowRight,
   Mail, Phone, Percent, Calendar, Eye, Trash2, Edit3,
-  RefreshCw, XCircle, Info
+  RefreshCw, XCircle, Info, Menu, LogOut
 } from 'lucide-react';
+
+/* ─── Responsive helper ─────────────────────────────────────── */
+export const useIsMobile = (breakpoint = 760) => {
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== 'undefined' ? window.innerWidth < breakpoint : false
+  );
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < breakpoint);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [breakpoint]);
+  return isMobile;
+};
 
 /* ─── Typography helpers ───────────────────────────────────── */
 export const Label = ({ children, style }) => (
@@ -27,7 +40,8 @@ export const Badge = ({ status, small }) => {
       fontWeight: 600,
       padding: small ? '1px 7px' : '3px 10px',
       whiteSpace: 'nowrap',
-      display: 'inline-block',
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      lineHeight: 1.5,
     }}>{status}</span>
   );
 };
@@ -83,20 +97,21 @@ export const Field = ({ label, value, accent, red: redV, mono }) => (
 /* ─── Table helpers ─────────────────────────────────────────── */
 export const TH = ({ children, style }) => (
   <th style={{
-    padding: '9px 13px', fontSize: 10.5, fontWeight: 700, color: C.textMut,
-    letterSpacing: '0.05em', textTransform: 'uppercase', background: '#f7f9fb',
+    padding: '10px 16px', fontSize: 10.5, fontWeight: 700, color: C.textMut,
+    letterSpacing: '0.04em', textTransform: 'uppercase', background: '#f7f9fb',
     borderBottom: `1.5px solid ${C.border}`, whiteSpace: 'nowrap', textAlign: 'left',
+    verticalAlign: 'middle',
     ...style,
   }}>{children}</th>
 );
 
 export const TD = ({ children, style, mono, accent, muted }) => (
   <td style={{
-    padding: '11px 13px', fontSize: 13,
+    padding: '11px 16px', fontSize: 13,
     color: accent ? C.primary : muted ? C.textSm : C.text,
     fontWeight: accent ? 600 : undefined,
     fontFamily: mono ? 'monospace' : undefined,
-    fontVariantNumeric: 'tabular-nums',
+    fontVariantNumeric: 'tabular-nums', verticalAlign: 'middle',
     ...style,
   }}>{children}</td>
 );
@@ -142,6 +157,7 @@ export const ModalFooter = ({ children }) => (
   <div style={{
     padding: '13px 24px', borderTop: `1px solid ${C.border}`,
     background: '#f8fafc', display: 'flex', justifyContent: 'flex-end', gap: 9,
+    flexWrap: 'wrap',
   }}>{children}</div>
 );
 
@@ -167,10 +183,17 @@ const NavItem = ({ icon: Icon, label, active, badge, onClick }) => (
   </button>
 );
 
-export const Shell = ({ children, nav, user, portal = 'admin' }) => (
-  <div style={{ display: 'flex', height: '100vh', fontFamily: 'Inter, system-ui, -apple-system, sans-serif', background: C.bg }}>
-    {/* Sidebar */}
-    <div style={{ width: 224, background: C.sidebar, padding: '22px 10px', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+export const Shell = ({ children, nav, user, onSignOut }) => {
+  const [navOpen, setNavOpen] = useState(false);   // mobile drawer
+  const isMobile = useIsMobile();
+
+  const sidebar = (
+    <div style={{
+      width: 224, background: C.sidebar, padding: '22px 10px',
+      display: 'flex', flexDirection: 'column', flexShrink: 0,
+      height: '100%',
+      ...(isMobile ? { position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 60, boxShadow: '2px 0 24px rgba(0,0,0,0.35)' } : {}),
+    }}>
       {/* Logo */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 28, paddingLeft: 2 }}>
         <div style={{ width: 34, height: 34, borderRadius: 8, background: C.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -183,13 +206,13 @@ export const Shell = ({ children, nav, user, portal = 'admin' }) => (
       </div>
 
       {/* Nav */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1 }}>
+      <div onClick={() => isMobile && setNavOpen(false)} style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1 }}>
         {nav}
       </div>
 
-      {/* User */}
-      <div style={{ borderTop: '1px solid rgba(255,255,255,0.09)', paddingTop: 14, marginTop: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '4px 6px' }}>
+      {/* User + Sign Out pinned to the bottom */}
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.09)', paddingTop: 12, marginTop: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '4px 6px', marginBottom: 6 }}>
           <div style={{ width: 29, height: 29, borderRadius: '50%', background: C.primLt, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: C.primary, flexShrink: 0 }}>
             {user?.initials || 'BL'}
           </div>
@@ -198,29 +221,64 @@ export const Shell = ({ children, nav, user, portal = 'admin' }) => (
             <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10.5 }}>{user?.role || 'Owner'}</div>
           </div>
         </div>
+        {onSignOut && (
+          <button onClick={onSignOut} style={{
+            display: 'flex', alignItems: 'center', gap: 9, width: '100%',
+            padding: '8px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
+            background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.78)',
+            fontWeight: 500, fontSize: 13, fontFamily: 'Inter, system-ui, -apple-system, sans-serif', textAlign: 'left',
+          }}>
+            <LogOut size={15} />
+            <span>Sign Out</span>
+          </button>
+        )}
       </div>
     </div>
+  );
 
-    {/* Main */}
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {children}
-    </div>
-  </div>
-);
+  return (
+    <div style={{ display: 'flex', height: '100vh', fontFamily: 'Inter, system-ui, -apple-system, sans-serif', background: C.bg }}>
+      {/* Desktop sidebar, or mobile drawer when open */}
+      {(!isMobile || navOpen) && sidebar}
+      {/* Mobile backdrop */}
+      {isMobile && navOpen && (
+        <div onClick={() => setNavOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 55 }} />
+      )}
 
-export const Topbar = ({ title, subtitle, children }) => (
-  <div style={{
-    height: 52, background: '#fff', borderBottom: `1px solid ${C.border}`,
-    padding: '0 26px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    flexShrink: 0,
-  }}>
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-      <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{title}</span>
-      {subtitle && <span style={{ fontSize: 12.5, color: C.textMut }}>— {subtitle}</span>}
+      {/* Main */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+        {isMobile && (
+          <button onClick={() => setNavOpen(true)} aria-label="Open menu" style={{
+            position: 'absolute', top: 11, left: 12, zIndex: 40, width: 32, height: 32,
+            borderRadius: 7, border: `1px solid ${C.border}`, background: '#fff',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+          }}>
+            <Menu size={17} color={C.textSm} />
+          </button>
+        )}
+        {children}
+      </div>
     </div>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>{children}</div>
-  </div>
-);
+  );
+};
+
+export const Topbar = ({ title, subtitle, children }) => {
+  const isMobile = useIsMobile();
+  return (
+    <div style={{
+      minHeight: 52, background: '#fff', borderBottom: `1px solid ${C.border}`,
+      padding: isMobile ? '0 14px 0 52px' : '0 26px',
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      gap: 10, flexShrink: 0,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: C.text, whiteSpace: 'nowrap' }}>{title}</span>
+        {subtitle && !isMobile && <span style={{ fontSize: 12.5, color: C.textMut }}>— {subtitle}</span>}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>{children}</div>
+    </div>
+  );
+};
 
 export const PageContent = ({ children, style }) => (
   <div style={{ flex: 1, overflowY: 'auto', padding: '22px 26px', ...style }}>{children}</div>

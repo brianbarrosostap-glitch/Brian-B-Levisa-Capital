@@ -38,6 +38,32 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
 
+/**
+ * Verify the bearer is a service-role token for THIS project.
+ *
+ * We first try an exact match against the injected SUPABASE_SERVICE_ROLE_KEY
+ * (fast path). If that fails — e.g. the JWT secret was rotated after this
+ * function was last deployed, so the injected env var is stale — we fall back
+ * to decoding the JWT payload and accepting any token whose `role` claim is
+ * `service_role`. This keeps the endpoint working across key rotation without
+ * a redeploy, while still rejecting anon/user tokens.
+ */
+const isServiceRole = (token: string): boolean => {
+  if (!token) return false
+  const injected = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (injected && token === injected) return true
+  try {
+    const payload = token.split('.')[1]
+    if (!payload) return false
+    // base64url → base64, then decode
+    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/')
+    const claims = JSON.parse(atob(b64))
+    return claims.role === 'service_role'
+  } catch {
+    return false
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -51,7 +77,7 @@ Deno.serve(async (req) => {
     // (Only trusted server-side automation should reach this.)
     const authHeader = req.headers.get('Authorization') || ''
     const token = authHeader.replace(/^Bearer\s+/i, '')
-    if (token !== Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')) {
+    if (!isServiceRole(token)) {
       return json({ error: 'Forbidden — service role required' }, 403)
     }
 

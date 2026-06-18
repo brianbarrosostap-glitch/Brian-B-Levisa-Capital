@@ -66,6 +66,9 @@ verify_jwt = true
 [functions.mark-invoice-status]
 verify_jwt = true
 
+[functions.agree-advance]
+verify_jwt = true
+
 # Machine ingest endpoints called by the Drive automation with the
 # service-role key (NOT a browser user JWT), so verify_jwt is off and
 # the function itself checks the bearer token equals the service key.
@@ -73,4 +76,7 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.ingest-check]
+verify_jwt = false
+
+[functions.ingest-confirmation]
 verify_jwt = false

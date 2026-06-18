@@ -29,6 +29,7 @@ export const STATUS_COLOURS = {
   'Payment Requested':   { bg: '#fef9c3', text: '#92400e' },
   'Ready for Payment':   { bg: '#dcfce7', text: '#15803d' },
   'Advance Confirmed':   { bg: '#cffafe', text: '#0e7490' },
+  'Advance Agreed':      { bg: '#ccfbf1', text: '#0f766e' },
   'Advance Paid':        { bg: '#d1fae5', text: '#065f46' },
   'Submitted to Ryder':  { bg: '#dbeafe', text: '#1e3a8a' },
   'Acknowledged':        { bg: '#ede9fe', text: '#5b21b6' },
@@ -49,3 +50,23 @@ export const ROW_BG = {
   'Paid':          '#f8fffe',
   'Payment Requested': '#fffdf5',
 };
+
+// Customer-facing labels — the internal status enum is engineering-speak.
+// The customer portal shows these friendlier words instead. Ryder-side
+// states all collapse to "Processing" because the customer doesn't track Ryder.
+export const CUSTOMER_STATUS_LABEL = {
+  'Uploaded':            'Received',
+  'Eligible':            'Ready',
+  'Payment Requested':   'Submitted',
+  'Advance Confirmed':   'Approved — agree to 97%',
+  'Advance Agreed':      'Awaiting Payout',
+  'Advance Paid':        'Advance Paid',
+  'Submitted to Ryder':  'Processing',
+  'Acknowledged':        'Processing',
+  'Resubmitted':         'Processing',
+  'Paid':                'Completed',
+  'Void':                'Cancelled',
+  'Cancelled':           'Cancelled',
+};
+
+export const customerStatus = (s) => CUSTOMER_STATUS_LABEL[s] || s;

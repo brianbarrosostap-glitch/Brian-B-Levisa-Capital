@@ -48,15 +48,15 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
         .select('status, occurred_at, note')
         .eq('invoice_id', inv.id)
         .order('occurred_at', { ascending: true }),
-      // Checks linked to this invoice (payment proof from Ryder, via Drive)
+      // Cheques linked to this invoice (payment proof from Ryder, via Drive)
       supabase
-        .from('check_invoices')
-        .select('check:checks(id, check_number, ryder_conf_number, amount, status, drive_file_url, received_at)')
+        .from('cheque_invoices')
+        .select('cheque:cheques(id, check_number, ryder_conf_number, amount, status, drive_file_url, received_at)')
         .eq('invoice_id', inv.id),
     ])
     if (invData) setDetail(invData)
     if (tl)     setTimeline(tl)
-    if (chk)    setChecks(chk.map(r => r.check).filter(Boolean))
+    if (chk)    setChecks(chk.map(r => r.cheque).filter(Boolean))
     setLoading(false)
   }
 
@@ -71,7 +71,7 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
   const d = detail || inv
 
   // Build timeline steps from DB rows + fill remaining steps
-  const STEPS = ['Payment Requested','Advance Confirmed','Advance Paid','Submitted to Ryder','Acknowledged','Paid']
+  const STEPS = ['Payment Requested','Advance Confirmed','Advance Agreed','Advance Paid','Submitted to Ryder','Acknowledged','Paid']
   const doneSet = new Set(timeline.map(t => t.status))
   const currentIdx = STEPS.findIndex(s => !doneSet.has(s))
 
@@ -213,11 +213,30 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
                   </div>
                 )}
               </div>
+
+              {/* Confirmations (email-driven, written by n8n) */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.textSm, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Confirmations</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+                  <Field
+                    label="Customer (RZR) Confirmed"
+                    value={d.customer_confirmed_at ? new Date(d.customer_confirmed_at).toLocaleString() : 'Awaiting'}
+                    accent={!!d.customer_confirmed_at}
+                  />
+                  <Field
+                    label="Ryder Confirmed"
+                    value={d.ryder_confirmed_at ? new Date(d.ryder_confirmed_at).toLocaleString() : 'Awaiting'}
+                    accent={!!d.ryder_confirmed_at}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </ModalBody>
       )}
       <ModalFooter>
+        {/* Primary owner action: moves ONLY to 'Advance Paid' (no jump to Paid). */}
+        <Btn size="sm" onClick={() => handleAction('mark_advance_paid')}>Mark Advance Paid</Btn>
         <Btn variant="outline" size="sm" onClick={() => handleAction('resubmit')}>Resubmit</Btn>
         <Btn variant="subtle"  size="sm" onClick={() => handleAction('mark_ryder_paid')}>Mark Ryder Paid</Btn>
         <div style={{ flex: 1 }} />

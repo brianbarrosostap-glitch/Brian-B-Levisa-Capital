@@ -178,6 +178,15 @@ Deno.serve(async (req) => {
       source: 'approve-batch',
     })
 
+    // ── Notify the CUSTOMER: approved → they must agree to 97% ──
+    await admin.from('notifications').insert({
+      client_id: batch.client_id,
+      audience: 'customer',
+      new_status: 'Advance Confirmed',
+      title: `Advance approved — review your 97% terms`,
+      body: `${approved_invoice_ids.length} invoice(s) were approved. Agree to the 97% advance to proceed.`,
+    })
+
     return new Response(
       JSON.stringify({
         success: true,

@@ -115,7 +115,7 @@ function ChequeModal({ item, onClose, onResolved }) {
   }
 
   return (
-    <Modal onClose={onClose} title="Enter Check Manually" subtitle={`Invoice ${item.invoice_number} — unreadable scan`} width={480}>
+    <Modal onClose={onClose} title="Enter Check Manually" subtitle={item.invoice_number ? `Invoice ${item.invoice_number} — unreadable scan` : `Cheque ${item.check_number || '(no #)'} — no matched invoice`} width={480}>
       <ModalBody>
         <div style={{ padding: '11px 13px', borderRadius: 9, border: '1px solid #fecaca', background: '#fff8f8', fontSize: 13, color: '#991b1b', marginBottom: 18 }}>
           Check #{item.check_number} was scanned but the invoice ID could not be read. Please enter the details manually.
@@ -160,7 +160,7 @@ export default function Dashboard() {
       .from('needs_attention')
       .select(`
         id, type, title, detail, action_label,
-        ryder_conf_number, ryder_amount, check_number, resolved,
+        ryder_conf_number, ryder_amount, check_number, resolved, cheque_id,
         invoice:invoices(id, invoice_number, unit_number, status)
       `)
       .eq('resolved', false)

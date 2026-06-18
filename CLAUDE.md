@@ -8,6 +8,56 @@ A full-stack invoice factoring web app for **Levisa Capital**. Clients submit in
 
 ---
 
+## ⚠️ OPERATIONAL NOTES — READ FIRST (added 2026-06-17)
+
+These are non-obvious, hard-won facts. A fresh chat must read these before touching anything.
+
+### Live Supabase project
+- **The app's real project ref is `fhmdtbvpjqftwsbdihcu`** ("brianbarrosostap-glitch's Project"). `.env` (NOT `.env.local`) holds `VITE_SUPABASE_URL=https://fhmdtbvpjqftwsbdihcu.supabase.co`.
+- The Supabase **MCP tools in this environment connect to a DIFFERENT project** (`WorkWitness` / `yzouxdikchgxlbitvzix`, an unrelated time-tracking app). So MCP `execute_sql` CANNOT reach the Levisa DB — the user runs SQL manually in the dashboard SQL Editor.
+- If a migration errors `42P01 relation "public.invoices" does not exist` although it clearly exists, the cause is **wrong project selected in the SQL editor** (or a prior failed statement aborted the transaction), NOT a SQL bug. Confirm with `select to_regclass('public.invoices');` in a fresh editor tab on the right project.
+
+### n8n owns ALL automation — DO NOT rebuild it (project charter)
+n8n + Gemini handle every trigger/timer/email/file-watch/PDF/OCR/external-API. Claude's job is ONLY: DB schema, the endpoints n8n calls, and the UI. **Never** write a file watcher, email sender, PDF generator, cron/scheduler, polling loop, or webhook listener. If a task involves *sending/watching/waiting/calling an external API* (Gmail, Drive, Gemini, Docufree) → it's n8n's job; expose an endpoint instead and comment `// Called by n8n. Do not add trigger logic here.`
+
+### Status enum — keep as-is
+A generic charter once proposed a different status list (`Pending/Advance Approved/...`). **We deliberately kept the existing enum** (Uploaded → … → Paid) because the whole app + n8n already depend on it. Do not migrate the enum without explicit instruction.
+
+### Auth bearer for ingest-* functions
+The `ingest-*` functions verify the caller holds the **service_role** key. They now accept any valid `service_role` JWT (decode `role` claim) AND the exact injected key — robust to JWT-secret rotation. A 403 "service role required" from n8n almost always means the wrong key (anon vs service_role) or a stale deployed key (redeploy fixes it). Each function needs its own `deno.json` mapping `@supabase/supabase-js` → `npm:@supabase/supabase-js@2`, or it fails to bundle on deploy.
+
+### Known data fixes (not code bugs)
+- **Empty `profiles` → login `PGRST116` / blank admin UI.** The `on_auth_user_created` trigger only fires for NEW users; users created before it have no profile, so RLS (`current_user_role()`) returns null and the admin sees zero rows. Fix: run `supabase/migrations/BACKFILL_PROFILES.sql`.
+- **Blank CUSTOMER UI (`clients?owner_id=eq... → 0 rows`).** A customer sees nothing unless a `clients` row has `owner_id = their auth.uid()`. The seed often fails to link this. Fix: `update public.clients set owner_id = (select id from auth.users where email='<customer>') where id in (select distinct client_id from public.invoices);`
+
+### Migration gotchas
+- A view selecting `i.*` cannot be updated with `create or replace` after adding table columns (error 42P16) — must `drop view ... cascade; create view ...`.
+- `alter type ... add value` must run in its OWN statement/transaction before the value is used.
+
+### UI conventions added 2026-06-18
+- **Notifications:** `public.notifications` table + `trg_notify_status` trigger (fires on every `invoices.status` change — covers dashboard AND n8n/email). RLS role-scoped (admin all; customer only own client). Shared `src/components/NotificationBell.jsx` in both Topbars (polls every 20s). Migration: `20260618000001_notifications.sql`.
+- **Active tab persists** via `localStorage` (`admin.page` / `customer.page`) — refresh stays on the same screen.
+- **Sign Out** lives at the BOTTOM of the sidebar (rendered by `Shell` via `onSignOut` prop) — not in the nav list. Don't re-add inline Sign Out buttons in the App shells.
+- **Responsive:** `useIsMobile()` hook in `ui.jsx`; `Shell` collapses the sidebar into a hamburger drawer < 760px; tables are wrapped in `overflow-x:auto`. Keep new tables wrapped.
+- **Customer panel is Ryder-free:** `AdvancedInvoices`/`InvoicesToAdvance` must NOT show Advance@97%, Ryder/RZR confirmation, or advance-paid columns. Customer sees invoice #, amount, submitted, status, Drive link only.
+- **Master nav badge** is the live unresolved `needs_attention` count (was hardcoded 7). The dead "Date Range" filter was removed.
+- **`mark_advance_paid`** sets status to 'Advance Paid' ONLY (never auto-jumps to Paid). The InvoiceDetailModal "Mark Advance Paid" button + Master kebab both use it.
+
+### Two-stage advance flow + 'Advance Agreed' (added 2026-06-18)
+- **New status `Advance Agreed`** (enum, between Advance Confirmed and Advance Paid). Migration `20260618000002_advance_agreed_status.sql` (run the `alter type add value` line ALONE first). Lifecycle: `Payment Requested → (Brian approves) Advance Confirmed → (customer agrees to 97%) Advance Agreed → (Brian pays) Advance Paid → …`.
+- **`agree-advance` edge function** (customer JWT) — customer accepts 97% on an `Advance Confirmed` invoice → `Advance Agreed` + notifies admin. Brian does NOT pay out until the customer has agreed. UI: "Agree to 97%" button on customer Advanced Invoices.
+- **`approve-batch`** keeps invoices at `Advance Confirmed` (does not pay/raise anything) and notifies the customer to agree.
+- **Customer never sees raw internal statuses or Ryder data.** `src/tokens.js` → `CUSTOMER_STATUS_LABEL` / `customerStatus()` maps statuses to friendly words (e.g. Payment Requested→"Submitted"). The 97% advance amount is shown ONLY after approval (status in the APPROVED list).
+
+### Notifications are ROLE-TARGETED (changed 2026-06-18)
+- The DB status-change trigger was DROPPED (`20260618000003_notifications_role_based.sql`). Notifications are now inserted by edge functions with an explicit `audience` ('admin' | 'customer') + `client_id`. `NotificationBell` takes a `role` prop and filters by audience; customer reads are further RLS-scoped to their own client. Do NOT re-add a blanket DB trigger.
+
+### Other UI (2026-06-18)
+- **Admin Audit Logs tab** — `src/pages/admin/AuditLogs.jsx` reads `v_audit_logs`. Admin nav: Dashboard / Master / Cheques / Audit Logs (the "Checks" tab is labelled **Cheques** now; internal route key is `cheques`).
+- **Customer "remove" is UI-only and persisted** in `localStorage` (`customer.hiddenInvoices`) — stays hidden across refresh; never touches the DB.
+
+---
+
 ## Project Structure
 
 ```
@@ -23,28 +73,36 @@ src/
       AdminApp.jsx                 # Admin shell with sidebar nav
       Dashboard.jsx                # KPI cards + needs-attention panel
       Master.jsx                   # Invoice table + batch approval modal
-      InvoiceDetailModal.jsx       # Full invoice detail + timeline + action buttons
+      InvoiceDetailModal.jsx       # Full invoice detail + timeline + Confirmations section
+      Checks.jsx                   # Admin Cheques screen (reads v_cheques)
     customer/
       CustomerApp.jsx              # Customer shell with sidebar nav
       InvoicesToAdvance.jsx        # Select invoices → submit advance request
-      AdvancedInvoices.jsx         # Read-only view of submitted/processed invoices
+      AdvancedInvoices.jsx         # Read-only view + RZR/Ryder Confirmed columns
   components/
     ui.jsx                         # All shared UI components (see list below)
 
 supabase/
-  config.toml
+  config.toml                      # verify_jwt=false for all ingest-* functions
   migrations/
     STEP1_drop_and_recreate.sql    # USE THIS — drops orphaned types + creates all tables
     20260616000001_initial_schema.sql  # Clean schema (only safe on truly fresh DB)
     20260616000002_seed_data.sql   # Demo data (run AFTER creating auth users)
+    BACKFILL_PROFILES.sql          # Fix empty profiles (login PGRST116 / blank admin UI)
+    20260617000003_add_confirmation_columns.sql   # customer_/ryder_confirmed_at + v_invoices rebuild
+    20260617000004_rename_checks_to_cheques.sql   # checks→cheques, check_invoices→cheque_invoices
+    20260617000005_needs_attention_check_only.sql # nullable invoice_id + cheque_id + check_unmatched (run in 2 steps)
   functions/
     approve-batch/index.ts
     submit-advance-request/index.ts
     match-confirmation/index.ts
     mark-invoice-status/index.ts
+    ingest-invoice/index.ts        # n8n → create invoice (each fn has its own deno.json)
+    ingest-check/index.ts          # n8n → create cheque + match + alert
+    ingest-confirmation/index.ts   # n8n → customer/ryder confirmation (NEW)
 
-deploy-functions.ps1               # Windows: deploy all 4 edge functions
-deploy-functions.sh                # Mac/Linux: deploy all 4 edge functions
+deploy-functions.ps1               # Windows: deploy edge functions (set PROJECT_REF=fhmdtbvpjqftwsbdihcu)
+deploy-functions.sh                # Mac/Linux: deploy edge functions
 SUPABASE_SETUP.md                  # Step-by-step Supabase setup guide
 ```
 
@@ -59,25 +117,34 @@ SUPABASE_SETUP.md                  # Step-by-step Supabase setup guide
 - `role = 'admin'` → `<AdminApp />` | `role = 'customer'` → `<CustomerApp />`
 - Sign out: `supabase.auth.signOut()` passed as `onSignOut` prop to both apps
 
-**Demo users (must be created in Supabase Dashboard → Authentication → Users):**
+**Demo users (must be created in Supabase Dashboard → Authentication → Users).**
+NOTE: the live DB actually uses these emails (the originals in older docs were
+placeholders). The seed file `20260616000002_seed_data.sql` matches by these:
 
 | Email | Role | Name |
 |---|---|---|
-| brian@levisacapital.com | admin | Brian Levisa |
-| sarah@rzrinc.com | customer | Sarah Mitchell / RZR Inc |
+| divyanshu.sharma@growwstacks.com | admin | Divyanshu Sharma |
+| divyanshutest2@gmail.com | customer | Sarah Mitchell / RZR Inc |
+
+(A second admin `brian@levisacapital.com` also exists in auth.) After creating
+auth users, run `BACKFILL_PROFILES.sql` so each gets a `profiles` row, and make
+sure the customer owns a `clients` row (see Operational Notes → Known data fixes).
 
 ---
 
 ## Environment Variables
 
-File: `.env.local` (root of project — never commit this)
+File: `.env` (this repo currently uses `.env`, not `.env.local` — Vite reads both).
+Never commit real keys. The live values point at project **`fhmdtbvpjqftwsbdihcu`**:
 
 ```
-VITE_SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJ...
+VITE_SUPABASE_URL=https://fhmdtbvpjqftwsbdihcu.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJ...    # anon/public key ONLY — never the service_role key
 ```
 
-Get both from: **Supabase Dashboard → Project Settings → API**
+Get both from: **Supabase Dashboard → Project Settings → API**.
+The **service_role** key is used only server-side by n8n when calling `ingest-*`
+functions — never put it in any frontend env file.
 
 ---
 
@@ -137,23 +204,23 @@ TimelineStep   — single row in invoice timeline (icon, label, date, note)
 | `profiles` | Extends `auth.users`. Columns: `id` (FK → auth.users), `role` (enum), `full_name`, `initials` |
 | `clients` | One per customer company. Has `owner_id` → `profiles.id` for RLS |
 | `batches` | One advance request = one batch. Has `request_number` (REQ-YYYY-NNN format) |
-| `invoices` | Central fact table. `advance_amount` and `factoring_fee` are **generated/computed columns**. **Drive:** `drive_file_id` + `drive_file_url` point at the invoice PDF in the INVOICES Drive folder |
+| `invoices` | Central fact table. `advance_amount` and `factoring_fee` are **generated/computed columns**. **Drive:** `drive_file_id` + `drive_file_url` point at the invoice PDF in the INVOICES Drive folder. **Confirmation columns (added 2026-06-17):** `customer_confirmed_at`, `customer_conf_email` (RZR confirms post-approval), `ryder_confirmed_at` (Ryder confirms post-payment; pairs with existing `ryder_conf_number`) |
 | `invoice_timeline` | Append-only status log. Written automatically by DB trigger on `invoices.status` change (status + invoice only) |
-| `needs_attention` | Admin alerts: unmatched conf numbers, unreadable checks, overdue |
-| `checks` | One row per file in the CHECKS Drive folder (payment proof from Ryder). Columns: `check_number`, `amount`, `ryder_conf_number`, `drive_file_id`/`drive_file_url`, `status` (unmatched/matched/unreadable) |
-| `check_invoices` | Join table: which invoice(s) a check pays (a check can cover many invoices). PK `(check_id, invoice_id)` |
+| `needs_attention` | Admin alerts. **`invoice_id` is NULLABLE (2026-06-17)** + has `cheque_id` so a CHEQUE that couldn't be matched can raise a check-only alert. Constraint: must anchor to an invoice OR a cheque. Types: `conf_match`, `check_unreadable`, `check_unmatched`, `overdue` |
+| `cheques` | **(Renamed from `checks` on 2026-06-17.)** One row per file in the CHECKS Drive folder (payment proof from Ryder). Columns KEPT their names: `check_number`, `amount`, `ryder_conf_number`, `drive_file_id`/`drive_file_url`, `status` (`check_status`: unmatched/matched/unreadable) |
+| `cheque_invoices` | **(Renamed from `check_invoices`.)** Join table: which invoice(s) a cheque pays. PK `(cheque_id, invoice_id)` — FK col renamed `check_id` → `cheque_id` |
 | `audit_logs` | **Comprehensive append-only audit trail** — who did what, when, on which row, across all core tables. Written by a generic DB trigger (auto safety net, before/after JSON) **and** by edge functions (rich rows with the real human actor + note) |
 
 ### Google Drive flow (two folders)
 - **Invoices folder** → invoice PDFs. Your external automation drops a file, then calls the **`ingest-invoice`** edge function, which inserts/updates the `invoices` row and stores `drive_file_id` + `drive_file_url`. **Both** admin and customer portals link to the PDF via `drive_file_url`.
-- **Checks folder** → payment-proof from Ryder. Automation calls **`ingest-check`**, which inserts a `checks` row, auto-matches to invoice(s) by `invoice_number` (→ `check_invoices`), advances matched invoices (Submitted to Ryder → Acknowledged → Paid), and records the Drive link. Customers can read checks tied to their own invoices.
-- **Where the Drive data lives:** invoice files → `invoices.drive_file_id/url`; check files → `checks.drive_file_id/url`. Nothing else stores Drive handles.
+- **Checks folder** → payment-proof from Ryder. Automation calls **`ingest-check`**, which inserts a **`cheques`** row, auto-matches to invoice(s) by `invoice_number` (→ **`cheque_invoices`**), advances matched invoices (Submitted to Ryder → Acknowledged → Paid), and records the Drive link. If it can't match, it now inserts a **check-only `needs_attention` alert** (anchored to `cheque_id`). Customers can read cheques tied to their own invoices.
+- **Where the Drive data lives:** invoice files → `invoices.drive_file_id/url`; cheque files → `cheques.drive_file_id/url`. Nothing else stores Drive handles.
 
 ### Views
 - `v_kpi` — aggregated KPI numbers used by the admin Dashboard. `overdue_60` computes "days out" live from `ryder_submitted_at`
 - `v_invoices` — `invoices.*` plus a live-computed `ryder_days_out` column
 - `v_audit_logs` — `audit_logs` newest-first, joined to `profiles` for a readable `actor_name`. Use this for the admin audit-log screen
-- `v_checks` — each check plus a comma-separated list of the invoice numbers it pays. Use this for the admin Checks screen
+- `v_cheques` — **(renamed from `v_checks`)** each cheque plus a comma-separated list of the invoice numbers it pays. Use this for the admin Checks screen (`Checks.jsx`)
 
 ### Enum Types
 ```sql
@@ -165,11 +232,11 @@ batch_status:   Pending | Approved | Rejected | Partially Approved
 
 user_role:      admin | customer
 
-attention_type: conf_match | check_unreadable | overdue
+attention_type: conf_match | check_unreadable | check_unmatched | overdue   -- check_unmatched added 2026-06-17
 
 audit_action:   insert | update | delete | status_change
 
-check_status:   unmatched | matched | unreadable
+check_status:   unmatched | matched | unreadable   -- enum name kept as check_status (table is `cheques`)
 ```
 
 ### Generated Columns (do NOT try to insert into these)
@@ -196,16 +263,17 @@ All functions live in `supabase/functions/`. The **user-facing** ones (first fou
 2. Fetch the caller's profile to verify role (admin or customer)
 3. Use the **service role key** (`Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')`) for DB writes to bypass RLS
 
-The **machine ingest** ones (`ingest-*`) are called server-side by the Drive automation with the service-role key as the bearer token; they have `verify_jwt = false` in `config.toml` and verify the bearer equals the service key.
+The **machine ingest** ones (`ingest-*`) are called server-side by the n8n/Drive automation with the service-role key as the bearer token; they have `verify_jwt = false` in `config.toml`. Their auth check (`isServiceRole`) accepts the exact injected `SUPABASE_SERVICE_ROLE_KEY` **or** any JWT whose `role` claim is `service_role` (robust to JWT-secret rotation). Each ingest function needs its own `deno.json` (import map) or it won't bundle on deploy.
 
 | Function | Caller | What it does |
 |---|---|---|
 | `approve-batch` | admin | Reviews a batch — marks approved invoices as "Advance Confirmed", excluded ones as "Eligible", updates batch status |
 | `submit-advance-request` | customer | Creates a new batch with REQ-YYYY-NNN number, links invoices, sets status to "Payment Requested" |
-| `match-confirmation` | admin | Links `ryder_conf_number` or `check_number` to invoice, advances status (Submitted→Acknowledged, or →Paid), marks `needs_attention` resolved |
+| `match-confirmation` | admin | Links `ryder_conf_number` or `check_number` to invoice, advances status (Submitted→Acknowledged, or →Paid), marks `needs_attention` resolved (admin-triggered, needs a `needs_attention` row) |
 | `mark-invoice-status` | admin | General status override. Actions: `mark_paid_override`, `set_void`, `mark_ryder_paid`, `resubmit`, `mark_advance_paid` |
-| `ingest-invoice` | Drive automation (service role) | Invoice PDF dropped in the INVOICES folder → upsert `invoices` row + store `drive_file_id`/`drive_file_url` |
-| `ingest-check` | Drive automation (service role) | Check file dropped in the CHECKS folder → create `checks` row, auto-match to invoice(s) by `invoice_number`, link via `check_invoices`, advance matched invoices |
+| `ingest-invoice` | n8n (service role) | Invoice PDF dropped in the INVOICES folder → upsert `invoices` row + store `drive_file_id`/`drive_file_url`. Body unchanged by recent edits. |
+| `ingest-check` | n8n (service role) | Cheque file dropped in the CHECKS folder → create `cheques` row, auto-match to invoice(s) by `invoice_number`, link via `cheque_invoices`, advance matched invoices. **If unmatched/unreadable → inserts a check-only `needs_attention` alert.** Body unchanged. |
+| `ingest-confirmation` | n8n (service role) | **NEW (2026-06-17).** Records the two email-driven confirmations. Body: `{ kind: "customer"|"ryder", invoice_number, conf_number?, conf_email?, confirmed_at? }`. Matches invoice **by `invoice_number` only**. `kind:customer` → stamps `customer_confirmed_at`. `kind:ryder` → stamps `ryder_confirmed_at` + `ryder_conf_number`, advances `Submitted to Ryder → Acknowledged`. `confirmed_at` optional (defaults to now). |
 
 **Invoking from React:**
 ```js

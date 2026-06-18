@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
     // ── Find this customer's client ───────────────────────────
     const { data: client, error: clientErr } = await service
       .from('clients')
-      .select('id')
+      .select('id, name')
       .eq('owner_id', user.id)
       .single()
 
@@ -145,6 +145,18 @@ Deno.serve(async (req) => {
       summary: `Advance request ${requestNumber} submitted with ${invoice_ids.length} invoice(s)`,
       source: 'submit-advance-request',
     })
+
+    // ── Notify ADMIN of the new advance request (role-targeted) ──
+    // .insert() returns { error } instead of throwing — log it so a
+    // notification failure is visible in the function logs.
+    const { error: notifErr } = await service.from('notifications').insert({
+      client_id: client.id,
+      audience: 'admin',
+      new_status: 'Payment Requested',
+      title: `New advance request — ${requestNumber}`,
+      body: `${client.name || 'A customer'} submitted ${invoice_ids.length} invoice(s) for advance.`,
+    })
+    if (notifErr) console.error('submit-advance-request: notification insert failed:', notifErr)
 
     return new Response(
       JSON.stringify({ success: true, batch }),

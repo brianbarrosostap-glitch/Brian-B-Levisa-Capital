@@ -53,10 +53,10 @@ export default function Checks() {
   const fetchChecks = async () => {
     setLoading(true)
     const { data, error } = await supabase
-      .from('v_checks')
+      .from('v_cheques')
       .select('*')
       .order('received_at', { ascending: false })
-    if (error) console.error('Failed to load checks:', error)
+    if (error) console.error('Failed to load cheques:', error)
     if (data) setChecks(data)
     setLoading(false)
   }
@@ -86,7 +86,7 @@ export default function Checks() {
     <div>
       <Card noPad>
         <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <SearchBar placeholder="Search check #, conf #, invoice #…" value={search} onChange={setSearch} />
+          <SearchBar placeholder="Search cheque #, conf #, invoice #…" value={search} onChange={setSearch} />
           <FilterChip label="Status" options={['matched', 'unmatched', 'unreadable']} value={statusFilter} onChange={setStatusFilter} />
         </div>
         <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}` }}>
@@ -99,17 +99,18 @@ export default function Checks() {
         </div>
 
         {loading ? (
-          <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>Loading checks…</div>
+          <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>Loading cheques…</div>
         ) : list.length === 0 ? (
           <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>
-            No checks yet. They appear here as the Drive automation ingests them.
+            No cheques yet. They appear here as the Drive automation ingests them.
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
             <thead>
               <tr>
                 <TH>Received</TH>
-                <TH>Check #</TH>
+                <TH>Cheque #</TH>
                 <TH>Ryder Conf #</TH>
                 <TH>Invoice(s) Paid</TH>
                 <TH style={{ textAlign: 'right' }}>Amount</TH>
@@ -131,6 +132,7 @@ export default function Checks() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
     </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { Check } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 import { C, ROW_BG } from '../../tokens'
-import { Card, Btn, Badge, Tabs, SearchBar, FilterChip, KebabMenu, TH, TD, Modal, ModalBody, ModalFooter, Field } from '../../components/ui'
+import { Card, Btn, Badge, Tabs, SearchBar, FilterChip, KebabMenu, TH, TD, Modal, ModalBody, ModalFooter } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
 import InvoiceDetailModal from './InvoiceDetailModal'
 
@@ -111,15 +111,31 @@ export default function Master() {
   const [search, setSearch]     = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [invoices, setInvoices] = useState([])
-  const [pendingBatch, setPendingBatch] = useState(null)
-  const [batchInvoices, setBatchInvoices] = useState([])
-  const [batchModal, setBatchModal]   = useState(false)
+  const [pendingBatches, setPendingBatches] = useState([])
+  // Banners hidden via the × button — persisted so they stay dismissed on refresh.
+  const [dismissed, setDismissed] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('master.dismissedBatches') || '[]')) }
+    catch { return new Set() }
+  })
+  const [activeBatch, setActiveBatch] = useState(null)   // the batch being reviewed
   const [detailModal, setDetailModal] = useState(null)
   const [loading, setLoading]   = useState(true)
 
   useEffect(() => {
     fetchInvoices()
     fetchPendingBatch()
+
+    // Keep the admin list in sync with status changes made elsewhere
+    // (customer submits, n8n/email ingest, etc.) — refresh when the
+    // window/tab regains focus or becomes visible.
+    const refresh = () => { fetchInvoices(); fetchPendingBatch() }
+    const onVis = () => { if (!document.hidden) refresh() }
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', onVis)
+    }
   }, [])
 
   const fetchInvoices = async () => {
@@ -138,12 +154,20 @@ export default function Master() {
       .select(`id, request_number, submitted_at, status, client:clients(name), invoices:invoices(id, invoice_number, unit_number, invoice_amount, advance_amount)`)
       .eq('status', 'Pending')
       .order('submitted_at', { ascending: false })
-      .limit(1)
 
-    if (batches && batches.length > 0) {
-      setPendingBatch(batches[0])
-      setBatchInvoices(batches[0].invoices || [])
-    }
+    const list = batches || []
+    setPendingBatches(list)
+
+    // Prune dismissed ids that are no longer pending (reviewed/approved),
+    // so the persisted set doesn't grow unbounded.
+    setDismissed(prev => {
+      const liveIds = new Set(list.map(b => b.id))
+      const pruned = new Set([...prev].filter(id => liveIds.has(id)))
+      if (pruned.size !== prev.size) {
+        localStorage.setItem('master.dismissedBatches', JSON.stringify([...pruned]))
+      }
+      return pruned
+    })
   }
 
   const active    = invoices.filter(i => !['Void','Cancelled'].includes(i.status))
@@ -171,27 +195,41 @@ export default function Master() {
 
   return (
     <div>
-      {/* Pending Request Banner */}
-      {pendingBatch && (
-        <div style={{ background: '#fffdf5', border: '1px solid #fde68a', borderRadius: 9, padding: '11px 16px', marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: '#fef9c3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth="2.5"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20"/></svg>
+      {/* Pending Request Banners — one per pending advance request */}
+      {pendingBatches.filter(b => !dismissed.has(b.id)).map(batch => {
+        const invs = batch.invoices || []
+        return (
+          <div key={batch.id} style={{ background: '#fffdf5', border: '1px solid #fde68a', borderRadius: 9, padding: '11px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: '#fef9c3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth="2.5"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20"/></svg>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: C.textB }}>New advance request — {batch.request_number} </span>
+              <span style={{ fontSize: 12, color: C.textSm }}>
+                {invs.length} invoice{invs.length !== 1 ? 's' : ''} · {fmt(invs.reduce((s,i)=>s+Number(i.invoice_amount),0))} · Submitted by {batch.client?.name} · {new Date(batch.submitted_at).toLocaleDateString()}
+              </span>
+            </div>
+            <Btn size="sm" onClick={() => setActiveBatch(batch)}>Review Request</Btn>
+            <button
+              onClick={() => setDismissed(prev => {
+                const next = new Set(prev).add(batch.id)
+                localStorage.setItem('master.dismissedBatches', JSON.stringify([...next]))
+                return next
+              })}
+              aria-label="Dismiss"
+              title="Dismiss (request stays until reviewed)"
+              style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #fde68a', background: '#fffdf5', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+            >
+              <X size={13} color={C.textMut} />
+            </button>
           </div>
-          <div style={{ flex: 1 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: C.textB }}>New advance request — {pendingBatch.request_number} </span>
-            <span style={{ fontSize: 12, color: C.textSm }}>
-              {batchInvoices.length} invoices · {fmt(batchInvoices.reduce((s,i)=>s+Number(i.invoice_amount),0))} · Submitted by {pendingBatch.client?.name} · {new Date(pendingBatch.submitted_at).toLocaleDateString()}
-            </span>
-          </div>
-          <Btn size="sm" onClick={() => setBatchModal(true)}>Review Request</Btn>
-        </div>
-      )}
+        )
+      })}
 
       <Card noPad>
         <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <SearchBar placeholder="Search invoice #, unit, amount…" value={search} onChange={setSearch} />
           <FilterChip label="Status" options={statuses} value={statusFilter} onChange={setStatusFilter} />
-          <FilterChip label="Date Range" options={['Last 30 days','Last 90 days','This year','All time']} value="" onChange={() => {}} />
         </div>
         <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}` }}>
           <Tabs active={tab} onChange={setTab} tabs={[
@@ -204,7 +242,8 @@ export default function Master() {
         {loading ? (
           <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>Loading invoices…</div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
             <thead>
               <tr>
                 <TH>Invoice Date</TH>
@@ -256,15 +295,16 @@ export default function Master() {
               </tfoot>
             )}
           </table>
+          </div>
         )}
       </Card>
 
-      {batchModal && pendingBatch && (
+      {activeBatch && (
         <BatchModal
-          batch={pendingBatch}
-          invoices={batchInvoices}
-          onClose={() => setBatchModal(false)}
-          onApproved={() => { fetchInvoices(); fetchPendingBatch(); setPendingBatch(null) }}
+          batch={activeBatch}
+          invoices={activeBatch.invoices || []}
+          onClose={() => setActiveBatch(null)}
+          onApproved={() => { fetchInvoices(); fetchPendingBatch(); setActiveBatch(null) }}
         />
       )}
 
