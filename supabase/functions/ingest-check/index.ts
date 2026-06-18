@@ -85,6 +85,8 @@ Deno.serve(async (req) => {
       ryder_conf_number = null,
       drive_file_id,
       drive_file_url,
+      // Accept a single invoice_number (primary) AND/OR an array.
+      invoice_number = null,
       invoice_numbers = [],
       unreadable = false,
     } = body
@@ -93,21 +95,33 @@ Deno.serve(async (req) => {
       return json({ error: 'drive_file_id and drive_file_url are required' }, 400)
     }
 
+    // Merge the single + array forms into one de-duplicated list to match on.
+    const numbersToMatch = [
+      ...(invoice_number ? [invoice_number] : []),
+      ...(Array.isArray(invoice_numbers) ? invoice_numbers : []),
+    ].filter((v, i, a) => v && a.indexOf(v) === i)
+
     // ── Resolve the target invoices (if any) ──────────────────
     let invoices: { id: string; invoice_number: string; status: string }[] = []
-    if (Array.isArray(invoice_numbers) && invoice_numbers.length > 0) {
+    if (numbersToMatch.length > 0) {
       const { data } = await service
         .from('invoices')
         .select('id, invoice_number, status')
-        .in('invoice_number', invoice_numbers)
+        .in('invoice_number', numbersToMatch)
       invoices = data || []
     }
+
+    // The "primary" invoice stamped directly on the cheque row: the one
+    // matching the single invoice_number if given, else the first match.
+    const primary = invoices.find(i => i.invoice_number === invoice_number) || invoices[0] || null
 
     const matched = invoices.length > 0
     const status = unreadable ? 'unreadable' : matched ? 'matched' : 'unmatched'
     const now = new Date().toISOString()
 
     // ── Create the cheque row ─────────────────────────────────
+    // Stamp the primary invoice reference directly on the cheque
+    // (invoice_number + invoice_id), in addition to the join table.
     const { data: check, error: cErr } = await service
       .from('cheques')
       .insert({
@@ -117,6 +131,8 @@ Deno.serve(async (req) => {
         drive_file_id,
         drive_file_url,
         status,
+        invoice_number: primary?.invoice_number || invoice_number || null,
+        invoice_id: primary?.id || null,
         matched_at: matched ? now : null,
       })
       .select()

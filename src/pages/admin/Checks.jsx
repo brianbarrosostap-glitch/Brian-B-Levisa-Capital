@@ -71,6 +71,7 @@ export default function Checks() {
       || c.check_number?.toLowerCase().includes(q)
       || c.ryder_conf_number?.toLowerCase().includes(q)
       || c.invoice_numbers?.toLowerCase().includes(q)
+      || c.invoice_number?.toLowerCase().includes(q)
     const matchS = !statusFilter || c.status === statusFilter
     return matchQ && matchS
   })
@@ -111,11 +112,11 @@ export default function Checks() {
               <tr>
                 <TH>Received</TH>
                 <TH>Cheque #</TH>
+                <TH>Invoice #</TH>
                 <TH>Ryder Conf #</TH>
-                <TH>Invoice(s) Paid</TH>
                 <TH style={{ textAlign: 'right' }}>Amount</TH>
-                <TH>Status</TH>
-                <TH style={{ width: 70 }}>File</TH>
+                <TH style={{ textAlign: 'center' }}>Status</TH>
+                <TH style={{ width: 70, textAlign: 'center' }}>File</TH>
               </tr>
             </thead>
             <tbody>
@@ -123,11 +124,15 @@ export default function Checks() {
                 <tr key={c.id}>
                   <TD muted>{c.received_at ? new Date(c.received_at).toLocaleDateString() : '—'}</TD>
                   <TD mono>{c.check_number || '—'}</TD>
+                  <TD mono>
+                    {(c.invoice_numbers || c.invoice_number)
+                      ? <span style={{ fontWeight: 600, color: C.primary }}>{c.invoice_numbers || c.invoice_number}</span>
+                      : <span style={{ color: C.textMut, fontStyle: 'italic' }}>unmatched</span>}
+                  </TD>
                   <TD mono>{c.ryder_conf_number || '—'}</TD>
-                  <TD mono>{c.invoice_numbers || <span style={{ color: C.textMut }}>unmatched</span>}</TD>
                   <TD style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(c.amount)}</TD>
-                  <TD><CheckBadge status={c.status} /></TD>
-                  <TD><DriveLink url={c.drive_file_url} /></TD>
+                  <TD style={{ textAlign: 'center' }}><CheckBadge status={c.status} /></TD>
+                  <TD style={{ textAlign: 'center' }}><DriveLink url={c.drive_file_url} /></TD>
                 </tr>
               ))}
             </tbody>

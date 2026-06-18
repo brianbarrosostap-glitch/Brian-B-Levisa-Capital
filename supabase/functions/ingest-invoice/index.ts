@@ -116,8 +116,20 @@ Deno.serve(async (req) => {
       if (client_rate == null) client_rate = client.advance_rate
     }
 
-    // ── Upsert the invoice (idempotent on invoice_number) ─────
-    // If the same file is re-processed, we just refresh the Drive link.
+    // ── Look up any existing invoice with this number ─────────
+    // Duplicate policy: we only allow an in-place update while the
+    // invoice is still fresh ('Uploaded' / 'Eligible'). Once it has
+    // progressed (Payment Requested or later) its amount is locked —
+    // re-ingesting a different amount would silently change a request
+    // the customer/admin already acted on (or a paid advance), so we
+    // REJECT it and raise an admin alert instead.
+    const EDITABLE = ['Uploaded', 'Eligible']
+    const { data: existing } = await service
+      .from('invoices')
+      .select('id, status, invoice_amount')
+      .eq('invoice_number', invoice_number)
+      .maybeSingle()
+
     const row: Record<string, unknown> = {
       invoice_number,
       client_id,
@@ -131,6 +143,48 @@ Deno.serve(async (req) => {
     }
     if (client_rate != null) row.advance_rate = client_rate
 
+    // ── Case 1: locked invoice (already progressed) ───────────
+    if (existing && !EDITABLE.includes(existing.status)) {
+      const amountChanged = Number(existing.invoice_amount) !== Number(invoice_amount)
+
+      // Only flag if the amount actually differs; an identical re-ingest
+      // (e.g. the same file re-processed) is a harmless no-op.
+      if (amountChanged) {
+        await service.from('needs_attention').insert({
+          invoice_id: existing.id,
+          type: 'conf_match',
+          title: 'Duplicate invoice — amount differs',
+          detail: `Invoice ${invoice_number} re-ingested from Drive with amount `
+            + `${invoice_amount} but the existing invoice is ${existing.invoice_amount} `
+            + `and already at status "${existing.status}". The amount was NOT changed — review manually.`,
+          action_label: 'Review',
+        })
+        await service.from('audit_logs').insert({
+          table_name: 'invoices',
+          record_id: existing.id,
+          action: 'update',
+          invoice_number,
+          summary: `Rejected re-ingest of ${invoice_number}: amount ${existing.invoice_amount} → ${invoice_amount} `
+            + `blocked because status is "${existing.status}" (not editable). Alert raised.`,
+          source: 'ingest-invoice',
+        })
+        return json({
+          success: false,
+          locked: true,
+          message: `Invoice ${invoice_number} is at status "${existing.status}" and cannot be amount-updated. An admin alert was raised.`,
+        }, 409)
+      }
+      // Same amount → just refresh the Drive link, nothing risky.
+      const { data: refreshed } = await service
+        .from('invoices')
+        .update({ drive_file_id, drive_file_url })
+        .eq('id', existing.id)
+        .select()
+        .single()
+      return json({ success: true, invoice: refreshed, updated: true, note: 'Drive link refreshed only.' })
+    }
+
+    // ── Case 2: insert new OR update an editable invoice ──────
     const { data: invoice, error: upErr } = await service
       .from('invoices')
       .upsert(row, { onConflict: 'invoice_number' })
@@ -139,17 +193,23 @@ Deno.serve(async (req) => {
 
     if (upErr) throw upErr
 
-    // ── Audit log (machine ingest) ────────────────────────────
+    // ── Audit log (machine ingest) — distinguish insert vs update
+    const isUpdate = !!existing
+    const amountChanged = existing && Number(existing.invoice_amount) !== Number(invoice_amount)
     await service.from('audit_logs').insert({
       table_name: 'invoices',
       record_id: invoice.id,
-      action: 'insert',
+      action: isUpdate ? 'update' : 'insert',
       invoice_number: invoice.invoice_number,
-      summary: `Invoice ${invoice.invoice_number} ingested from Drive (${drive_file_id})`,
+      summary: isUpdate
+        ? `Invoice ${invoice.invoice_number} updated from Drive`
+          + (amountChanged ? ` — amount ${existing.invoice_amount} → ${invoice_amount}` : '')
+          + ` (${drive_file_id})`
+        : `Invoice ${invoice.invoice_number} ingested from Drive (${drive_file_id})`,
       source: 'ingest-invoice',
     })
 
-    return json({ success: true, invoice })
+    return json({ success: true, invoice, updated: isUpdate })
   } catch (err) {
     console.error('ingest-invoice error:', err)
     return json({ error: String(err) }, 500)
