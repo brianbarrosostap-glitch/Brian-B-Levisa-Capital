@@ -94,6 +94,7 @@ Deno.serve(async (req) => {
       case 'mark_paid_override':
         update.status   = 'Paid'
         update.paid_at  = now
+        update.due_date = null   // settled — clear the due date
         break
 
       case 'set_void':
@@ -110,6 +111,7 @@ Deno.serve(async (req) => {
         update.status        = 'Paid'
         update.ryder_paid_at = now
         update.paid_at       = now
+        update.due_date      = null   // settled — clear the due date
         break
 
       case 'resubmit':

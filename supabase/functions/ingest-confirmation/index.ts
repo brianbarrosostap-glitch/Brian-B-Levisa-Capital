@@ -105,21 +105,28 @@ Deno.serve(async (req) => {
       if (conf_email) update.customer_conf_email = conf_email
       summary = `Customer (RZR) confirmed advance for invoice ${inv.invoice_number} (email parsed by n8n)`
     } else {
-      // Ryder confirmed payment — stamp conf + advance status.
+      // Ryder confirmed — this IS the acknowledgement. Stamp the conf and
+      // move the invoice to 'Acknowledged' + set the 60-day due date,
+      // regardless of the prior stage (Ryder confirming means they've
+      // received it). We only skip terminal states so we never reopen a
+      // closed/cancelled invoice.
       update.ryder_confirmed_at = now
       if (conf_number) update.ryder_conf_number = conf_number
-      if (inv.status === 'Submitted to Ryder') {
+
+      const TERMINAL = ['Paid', 'Void', 'Cancelled']
+      if (!TERMINAL.includes(inv.status)) {
         update.status = 'Acknowledged'
-        // Ryder pays within 60 days of acknowledgement → set the due date
-        // to confirmation date + 60 days. This is what the overdue-60 logic
-        // and the dashboard "Overdue with Ryder" tile track against.
+        // Stamp ryder_submitted_at if it wasn't set, so "days out" / overdue
+        // math has an anchor (the invoice reached Ryder at confirmation time).
+        update.ryder_submitted_at = now
+        // Ryder pays within 60 days of acknowledgement → due_date = now + 60d.
         const dueDate = new Date(now)
         dueDate.setDate(dueDate.getDate() + 60)
         update.due_date = dueDate.toISOString().slice(0, 10)   // 'YYYY-MM-DD'
       }
       summary = `Ryder confirmed invoice ${inv.invoice_number}`
         + (conf_number ? ` (conf #${conf_number})` : '')
-        + (update.status ? ` → Acknowledged, due ${update.due_date}` : '')
+        + (update.status ? ` → Acknowledged, due ${update.due_date}` : ` (status ${inv.status} unchanged — terminal)`)
     }
 
     const { data: updated, error: upErr } = await service

@@ -116,6 +116,7 @@ Deno.serve(async (req) => {
       if (['Acknowledged', 'Submitted to Ryder'].includes(inv?.status)) {
         invoiceUpdate.status = 'Paid'
         invoiceUpdate.paid_at = now
+        invoiceUpdate.due_date = null   // settled — clear the due date
       }
     }
 

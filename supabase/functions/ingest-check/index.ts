@@ -145,17 +145,18 @@ Deno.serve(async (req) => {
         invoices.map((i) => ({ cheque_id: check.id, invoice_id: i.id }))
       )
 
-      // Advance each invoice: Submitted to Ryder → Acknowledged,
-      // anything already Acknowledged → Paid. Record the conf #.
+      // A matched cheque IS proof Ryder paid → mark the invoice 'Paid'
+      // and stamp ryder_paid_at + paid_at, regardless of the prior stage.
+      // We skip terminal states so we never reopen a closed/void invoice.
+      const TERMINAL = ['Paid', 'Void', 'Cancelled']
       for (const inv of invoices) {
         const update: Record<string, unknown> = { updated_at: now }
         if (ryder_conf_number) update.ryder_conf_number = ryder_conf_number
-        if (inv.status === 'Submitted to Ryder') {
-          update.status = 'Acknowledged'
-        } else if (inv.status === 'Acknowledged') {
-          update.status = 'Paid'
-          update.paid_at = now
+        if (!TERMINAL.includes(inv.status)) {
+          update.status        = 'Paid'
+          update.paid_at       = now
           update.ryder_paid_at = now
+          update.due_date      = null   // settled — the due date no longer applies
         }
         await service.from('invoices').update(update).eq('id', inv.id)
       }
@@ -186,8 +187,8 @@ Deno.serve(async (req) => {
       action: matched ? 'status_change' : 'insert',
       ryder_conf_number,
       summary: matched
-        ? `Check ${check_number || '(no #)'} matched to ${invoices.map((i) => i.invoice_number).join(', ')}`
-        : `Check ${check_number || '(no #)'} ingested from Drive — ${status}`,
+        ? `Cheque ${check_number || '(no #)'} matched → ${invoices.map((i) => i.invoice_number).join(', ')} marked Paid (Ryder paid)`
+        : `Cheque ${check_number || '(no #)'} ingested from Drive — ${status}`,
       source: 'ingest-check',
     })
 

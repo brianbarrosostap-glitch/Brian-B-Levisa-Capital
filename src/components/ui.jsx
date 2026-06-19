@@ -1,5 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, createContext, useContext } from 'react';
 import { C, shadow, shadowMd, STATUS_COLOURS } from '../tokens';
+
+// Lets the Topbar render the mobile menu button inline (in the header row)
+// so it can never overlap content below it. Shell provides openNav.
+const ShellContext = createContext({ isMobile: false, openNav: () => {} });
 import {
   Layers, LayoutDashboard, ListOrdered, X, Search, ChevronDown,
   CheckCircle2, Circle, AlertTriangle, AlertCircle, FileText,
@@ -341,38 +345,42 @@ export const Shell = ({ children, nav, user, onSignOut }) => {
         <div onClick={() => setNavOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 55 }} />
       )}
 
-      {/* Main */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0, position: 'relative' }}>
-        {isMobile && (
-          <button onClick={() => setNavOpen(true)} aria-label="Open menu" style={{
-            // Sits inside the Topbar; the safe-area inset pushes it below the
-            // iPhone status bar so it never overlaps the clock/notch.
-            position: 'absolute', left: 10, zIndex: 40, width: 34, height: 34,
-            top: 'calc(env(safe-area-inset-top, 0px) + 8px)',
-            borderRadius: 8, border: `1px solid ${C.border}`, background: '#fff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-          }}>
-            <Menu size={18} color={C.textSm} />
-          </button>
-        )}
-        {children}
-      </div>
+      {/* Main — the mobile menu button now lives INSIDE the Topbar (via
+          ShellContext) so it can never overlap the content below it. */}
+      <ShellContext.Provider value={{ isMobile, openNav: () => setNavOpen(true) }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+          {children}
+        </div>
+      </ShellContext.Provider>
     </div>
   );
 };
 
 export const Topbar = ({ title, subtitle, children }) => {
-  const isMobile = useIsMobile();
+  const { isMobile, openNav } = useContext(ShellContext);
   return (
-    <div className="safe-top" style={{
+    <div style={{
       background: '#fff', borderBottom: `1px solid ${C.border}`,
-      // Extra left padding on mobile leaves room for the hamburger button.
-      padding: isMobile ? '8px 12px 8px 50px' : '0 26px',
+      // Bake the iPhone safe-area inset into the top padding directly (an
+      // inline `padding` shorthand would otherwise override a CSS class).
+      paddingTop: isMobile ? 'calc(env(safe-area-inset-top, 0px) + 10px)' : 0,
+      paddingBottom: isMobile ? 10 : 0,
+      paddingLeft: isMobile ? 12 : 26,
+      paddingRight: isMobile ? 12 : 26,
       minHeight: isMobile ? undefined : 52,
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       gap: 8, flexShrink: 0,
     }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+        {isMobile && (
+          <button onClick={openNav} aria-label="Open menu" style={{
+            width: 36, height: 36, flexShrink: 0, borderRadius: 8,
+            border: `1px solid ${C.border}`, background: '#fff',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+          }}>
+            <Menu size={18} color={C.textSm} />
+          </button>
+        )}
         <span style={{ fontSize: 15, fontWeight: 700, color: C.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
         {subtitle && !isMobile && <span style={{ fontSize: 12.5, color: C.textMut }}>— {subtitle}</span>}
       </div>
