@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Check, X } from 'lucide-react'
 import { C, ROW_BG } from '../../tokens'
-import { Card, Btn, Badge, Tabs, SearchBar, FilterChip, KebabMenu, TH, TD, Modal, ModalBody, ModalFooter } from '../../components/ui'
+import { Card, Btn, Badge, Tabs, SearchBar, FilterChip, KebabMenu, TH, TD, Modal, ModalBody, ModalFooter, useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
 import InvoiceDetailModal from './InvoiceDetailModal'
 
@@ -107,6 +107,7 @@ function BatchModal({ batch, invoices, onClose, onApproved }) {
 }
 
 export default function Master() {
+  const isMobile = useIsMobile()
   const [tab, setTab]           = useState('active')
   const [search, setSearch]     = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -250,6 +251,52 @@ export default function Master() {
 
         {loading ? (
           <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>Loading invoices…</div>
+        ) : isMobile ? (
+          /* ── Mobile: stacked cards so no column is hidden ── */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 10 }}>
+            {list.length === 0 && (
+              <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: C.textMut }}>No invoices.</div>
+            )}
+            {list.map(inv => (
+              <div key={inv.id} onClick={() => setDetailModal(inv)} style={{
+                border: `1px solid ${C.border}`, borderRadius: 10, padding: '12px 14px',
+                background: ROW_BG[inv.status] || '#fff', cursor: 'pointer',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14 }}>{inv.invoice_number}</span>
+                  <Badge status={inv.status} />
+                </div>
+                {[
+                  ['Invoice Date', new Date(inv.invoice_date).toLocaleDateString()],
+                  ['PO #', inv.po_number || '—'],
+                  ['Unit #', inv.unit_number || '—'],
+                  ['Invoice Amount', fmt(inv.invoice_amount)],
+                  ['Advance @97%', fmt(inv.advance_amount)],
+                ].map(([k, v]) => (
+                  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 12.5 }}>
+                    <span style={{ color: C.textMut, fontWeight: 600 }}>{k}</span>
+                    <span style={{ fontVariantNumeric: 'tabular-nums', color: k === 'Advance @97%' ? C.primary : C.text, fontWeight: k === 'Advance @97%' ? 700 : 400 }}>{v}</span>
+                  </div>
+                ))}
+                <div style={{ marginTop: 8, borderTop: `1px solid ${C.border}`, paddingTop: 8, display: 'flex', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
+                  <KebabMenu items={[
+                    { label: 'View Detail', onClick: () => setDetailModal(inv) },
+                    { label: 'Mark Advance Paid', onClick: () => handleMarkStatus(inv, 'mark_advance_paid') },
+                    { label: 'Mark Ryder Paid',   onClick: () => handleMarkStatus(inv, 'mark_ryder_paid') },
+                    { label: 'Mark Paid (override)', onClick: () => handleMarkStatus(inv, 'mark_paid_override') },
+                    { label: 'Resubmit',  onClick: () => handleMarkStatus(inv, 'resubmit') },
+                    { label: 'Void Invoice', danger: true, onClick: () => handleMarkStatus(inv, 'set_void') },
+                  ]} />
+                </div>
+              </div>
+            ))}
+            {list.length > 0 && (
+              <div style={{ borderTop: `2px solid ${C.primary}`, paddingTop: 10, display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, color: C.primary }}>
+                <span>Total ({list.length})</span>
+                <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(listTotalInvoice)} · {fmt(listTotalAdvance)}</span>
+              </div>
+            )}
+          </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>

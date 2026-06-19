@@ -83,6 +83,13 @@ function DateRangeBar({ preset, custom, applyPreset, applyCustom }) {
         <input type="date" value={custom.end} min={custom.start || undefined}
           onChange={e => applyCustom(custom.start || e.target.value, e.target.value)}
           style={inputStyle(preset === 'custom')} />
+        {preset === 'custom' && (
+          <button onClick={() => applyPreset('all')} title="Clear custom range" style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4, height: 30, boxSizing: 'border-box',
+            padding: '0 10px', borderRadius: 7, border: `1px solid ${C.border}`, background: '#fff',
+            color: C.red, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+          }}>✕ Clear</button>
+        )}
       </div>
     </div>
   )

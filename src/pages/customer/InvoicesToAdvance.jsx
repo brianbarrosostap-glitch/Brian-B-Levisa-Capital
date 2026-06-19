@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Check, X, ExternalLink } from 'lucide-react'
 import { C } from '../../tokens'
-import { Card, Btn, TH, TD, Modal, ModalBody, ModalFooter } from '../../components/ui'
+import { Card, Btn, TH, TD, Modal, ModalBody, ModalFooter, useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -117,6 +117,7 @@ function SubmitModal({ selected, onClose, onSubmit }) {
 }
 
 export default function InvoicesToAdvance() {
+  const isMobile = useIsMobile()
   const [invoices, setInvoices] = useState([])
   const [selected, setSelected] = useState(new Set())
   const [removeModal, setRemoveModal] = useState(null)
@@ -185,6 +186,45 @@ export default function InvoicesToAdvance() {
       <Card noPad>
         {loading ? (
           <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>Loading invoices…</div>
+        ) : isMobile ? (
+          /* ── Mobile: stacked selectable cards ── */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 10 }}>
+            {invoices.length === 0 && (
+              <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: C.textMut }}>No eligible invoices found.</div>
+            )}
+            {invoices.map(inv => {
+              const on = selected.has(inv.id)
+              return (
+                <div key={inv.id}
+                  onClick={() => toggle(inv.id)}
+                  style={{ border: `1px solid ${on ? C.primary : C.border}`, borderRadius: 10, padding: '12px 14px', background: on ? '#f1faf5' : '#fff', cursor: 'pointer' }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14 }}>{inv.invoice_number}</span>
+                    <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${on ? C.primary : C.borderMd}`, background: on ? C.primary : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {on && <Check size={11} color="#fff" strokeWidth={3} />}
+                    </div>
+                  </div>
+                  {[
+                    ['Invoice Date', new Date(inv.invoice_date).toLocaleDateString()],
+                    ['Unit #', inv.unit_number],
+                    ['Invoice Amount', fmt(inv.invoice_amount)],
+                  ].map(([k, v]) => (
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 12.5 }}>
+                      <span style={{ color: C.textMut, fontWeight: 600 }}>{k}</span>
+                      <span style={{ fontVariantNumeric: 'tabular-nums', color: C.text }}>{v}</span>
+                    </div>
+                  ))}
+                  <div style={{ marginTop: 8, borderTop: `1px solid ${C.border}`, paddingTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span onClick={e => e.stopPropagation()}><DriveBadge url={inv.drive_file_url} /></span>
+                    <button onClick={e => { e.stopPropagation(); setRemoveModal(inv) }} style={{ width: 24, height: 24, borderRadius: 5, border: `1px solid ${C.border}`, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <X size={12} color={C.textMut} />
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>

@@ -40,6 +40,78 @@ export const Grid = ({ cols = 4, gap = 11, mobileCols, tabletCols, style, childr
   );
 };
 
+/**
+ * Responsive data list. On desktop it renders a normal table; on phone
+ * (<640px) it renders each row as a stacked label/value CARD so nothing
+ * is hidden behind horizontal scroll.
+ *
+ * columns: [{ key, label, render?(row), align?, mono?, hideOnMobile? }]
+ * rows:    array of objects (each must have a stable `id`)
+ * onRowClick?(row), rowStyle?(row), footer? (JSX rendered below), actions?(row) → JSX
+ */
+export const DataList = ({ columns, rows, onRowClick, rowStyle, footer, actions, emptyText = 'No records.' }) => {
+  const w = useViewportWidth();
+  const phone = w < 640;
+  const cell = (col, row) => (col.render ? col.render(row) : row[col.key]);
+
+  if (rows.length === 0) {
+    return <div style={{ padding: 28, textAlign: 'center', fontSize: 13, color: C.textMut }}>{emptyText}</div>;
+  }
+
+  // ── Mobile: stacked cards ──
+  if (phone) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 10 }}>
+        {rows.map(row => (
+          <div key={row.id}
+            onClick={onRowClick ? () => onRowClick(row) : undefined}
+            style={{
+              border: `1px solid ${C.border}`, borderRadius: 10, padding: '12px 14px',
+              background: '#fff', cursor: onRowClick ? 'pointer' : 'default',
+              ...(rowStyle ? rowStyle(row) : {}),
+            }}>
+            {columns.filter(c => !c.hideOnMobile).map(col => (
+              <div key={col.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '3px 0' }}>
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.03em', flexShrink: 0 }}>{col.label}</span>
+                <span style={{ fontSize: 13, color: C.text, fontFamily: col.mono ? 'monospace' : 'inherit', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{cell(col, row)}</span>
+              </div>
+            ))}
+            {actions && <div style={{ marginTop: 8, borderTop: `1px solid ${C.border}`, paddingTop: 8 }} onClick={e => e.stopPropagation()}>{actions(row)}</div>}
+          </div>
+        ))}
+        {footer && <div style={{ borderTop: `2px solid ${C.primary}`, paddingTop: 8 }}>{footer}</div>}
+      </div>
+    );
+  }
+
+  // ── Desktop: table ──
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>
+            {columns.map(col => <TH key={col.key} style={col.align ? { textAlign: col.align } : undefined}>{col.label}</TH>)}
+            {actions && <TH style={{ width: 32 }} />}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(row => (
+            <tr key={row.id}
+              onClick={onRowClick ? () => onRowClick(row) : undefined}
+              style={{ cursor: onRowClick ? 'pointer' : 'default', ...(rowStyle ? rowStyle(row) : {}) }}>
+              {columns.map(col => (
+                <TD key={col.key} mono={col.mono} style={col.align ? { textAlign: col.align } : undefined}>{cell(col, row)}</TD>
+              ))}
+              {actions && <TD style={{ padding: '6px 8px' }} onClick={e => e.stopPropagation()}>{actions(row)}</TD>}
+            </tr>
+          ))}
+        </tbody>
+        {footer && <tfoot>{footer}</tfoot>}
+      </table>
+    </div>
+  );
+};
+
 /* ─── Typography helpers ───────────────────────────────────── */
 export const Label = ({ children, style }) => (
   <span style={{ fontSize: 10, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.05em', ...style }}>

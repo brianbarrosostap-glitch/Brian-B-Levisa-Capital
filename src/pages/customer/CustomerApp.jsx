@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { FileText, CheckSquare } from 'lucide-react'
 import { Shell, Topbar, PageContent } from '../../components/ui'
 import NotificationBell from '../../components/NotificationBell'
+import InstallPWA from '../../components/InstallPWA'
 import InvoicesToAdvance from './InvoicesToAdvance'
 import AdvancedInvoices from './AdvancedInvoices'
 
@@ -54,6 +55,7 @@ export default function CustomerApp({ user, onSignOut }) {
       onSignOut={onSignOut}
     >
       <Topbar title={t.title}>
+        <InstallPWA />
         <NotificationBell role="customer" />
         <div style={{
           width: 29, height: 29, borderRadius: '50%', background: '#eaf4ef',

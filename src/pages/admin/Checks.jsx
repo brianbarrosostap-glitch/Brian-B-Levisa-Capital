@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { C } from '../../tokens'
-import { Card, SearchBar, TH, TD } from '../../components/ui'
+import { Card, SearchBar, TH, TD, useIsMobile } from '../../components/ui'
 import { supabase } from '../../lib/supabase'
 
 const fmt = n => n == null ? '—' : '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -42,6 +42,7 @@ const DriveLink = ({ url }) => (
 )
 
 export default function Checks() {
+  const isMobile = useIsMobile()
   const [checks, setChecks]   = useState([])
   const [search, setSearch]   = useState('')
   const [loading, setLoading] = useState(true)
@@ -83,6 +84,35 @@ export default function Checks() {
         ) : list.length === 0 ? (
           <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>
             No cheques yet. They appear here as the Drive automation ingests them.
+          </div>
+        ) : isMobile ? (
+          /* ── Mobile: stacked cards ── */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 10 }}>
+            {list.length === 0 && (
+              <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: C.textMut }}>No records.</div>
+            )}
+            {list.map(c => (
+              <div key={c.id} style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: '12px 14px', background: '#fff' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14 }}>{c.check_number || '—'}</span>
+                  <CheckBadge status={c.status} />
+                </div>
+                {[
+                  ['Received', c.received_at ? new Date(c.received_at).toLocaleDateString() : '—'],
+                  ['Invoice #', (c.invoice_numbers || c.invoice_number) || 'unmatched'],
+                  ['Ryder Conf #', c.ryder_conf_number || '—'],
+                  ['Amount', fmt(c.amount)],
+                ].map(([k, v]) => (
+                  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 12.5 }}>
+                    <span style={{ color: C.textMut, fontWeight: 600 }}>{k}</span>
+                    <span style={{ fontVariantNumeric: 'tabular-nums', color: C.text }}>{v}</span>
+                  </div>
+                ))}
+                <div style={{ marginTop: 8, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
+                  <DriveLink url={c.drive_file_url} />
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>

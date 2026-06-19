@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { ExternalLink, Check } from 'lucide-react'
 import { C, customerStatus } from '../../tokens'
-import { Card, Badge, Btn, TH, TD } from '../../components/ui'
+import { Card, Badge, Btn, TH, TD, useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -19,6 +19,7 @@ const DriveBadge = ({ url }) => (
 const CustomerBadge = ({ status }) => <Badge status={customerStatus(status)} />
 
 export default function AdvancedInvoices() {
+  const isMobile = useIsMobile()
   const [invoices, setInvoices] = useState([])
   const [loading, setLoading]   = useState(true)
   const [agreeing, setAgreeing] = useState(null)
@@ -56,6 +57,41 @@ export default function AdvancedInvoices() {
       <Card noPad>
         {loading ? (
           <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>Loading…</div>
+        ) : isMobile ? (
+          /* ── Mobile: stacked cards ── */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 10 }}>
+            {invoices.length === 0 && (
+              <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: C.textMut }}>No advanced invoices yet.</div>
+            )}
+            {invoices.map(inv => {
+              const approved = APPROVED.includes(inv.status)
+              const canAgree = inv.status === 'Advance Confirmed'
+              return (
+                <div key={inv.id} style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: '12px 14px', background: '#fff' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14 }}>{inv.invoice_number}</span>
+                    {canAgree
+                      ? <Btn size="sm" onClick={() => agree(inv)} disabled={agreeing === inv.id}><Check size={12} /> {agreeing === inv.id ? 'Saving…' : 'Agree to 97%'}</Btn>
+                      : <CustomerBadge status={inv.status} />}
+                  </div>
+                  {[
+                    ['PO #', inv.po_number || '—'],
+                    ['Invoice Amount', fmt(inv.invoice_amount)],
+                    ['Advance', approved ? fmt(inv.advance_amount) : '—'],
+                    ['Submitted', inv.submitted_at ? new Date(inv.submitted_at).toLocaleDateString() : '—'],
+                  ].map(([k, v]) => (
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 12.5 }}>
+                      <span style={{ color: C.textMut, fontWeight: 600 }}>{k}</span>
+                      <span style={{ fontVariantNumeric: 'tabular-nums', color: k === 'Advance' && approved ? C.primary : C.text, fontWeight: k === 'Advance' && approved ? 700 : 400 }}>{v}</span>
+                    </div>
+                  ))}
+                  <div style={{ marginTop: 8, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
+                    <DriveBadge url={inv.drive_file_url} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { LayoutDashboard, ListOrdered, Receipt, ScrollText } from 'lucide-react'
 import { Shell, Topbar, PageContent } from '../../components/ui'
 import NotificationBell from '../../components/NotificationBell'
+import InstallPWA from '../../components/InstallPWA'
 import { supabase } from '../../lib/supabase'
 import Dashboard from './Dashboard'
 import Master from './Master'
@@ -82,7 +83,7 @@ export default function AdminApp({ user, onSignOut }) {
   return (
     <Shell nav={NavItems} user={userInfo} onSignOut={onSignOut}>
       <Topbar title={t.title} subtitle={t.subtitle}>
-        {page === 'master' && (
+        {/* {page === 'master' && (
           <button style={{
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '6px 13px', borderRadius: 7, border: '1px solid #dde4ec',
@@ -96,7 +97,8 @@ export default function AdminApp({ user, onSignOut }) {
             </svg>
             Export CSV
           </button>
-        )}
+        )} */}
+        <InstallPWA />
         <NotificationBell />
       </Topbar>
       <PageContent>
