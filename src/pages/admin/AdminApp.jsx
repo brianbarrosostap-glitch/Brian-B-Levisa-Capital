@@ -34,13 +34,17 @@ export default function AdminApp({ user, onSignOut }) {
 
   useEffect(() => { localStorage.setItem('admin.page', page) }, [page])
 
-  // Live count of unresolved Needs-Attention items (was hardcoded to 7).
+  // Master badge = live count of OVERDUE invoices with Ryder (Acknowledged
+  // and past due_date) — these are the "needs attention" items now.
   useEffect(() => {
     const load = async () => {
+      const today = new Date().toISOString().slice(0, 10)
       const { count } = await supabase
-        .from('needs_attention')
+        .from('invoices')
         .select('id', { count: 'exact', head: true })
-        .eq('resolved', false)
+        .eq('status', 'Acknowledged')
+        .not('due_date', 'is', null)
+        .lt('due_date', today)
       setAttnCount(count ?? 0)
     }
     load()

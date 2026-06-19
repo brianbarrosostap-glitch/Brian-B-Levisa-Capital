@@ -158,6 +158,46 @@ Deno.serve(async (req) => {
     })
     if (notifErr) console.error('submit-advance-request: notification insert failed:', notifErr)
 
+    // ── Trigger the n8n webhook: hand off the invoice numbers so n8n can
+    //    fetch each invoice from Supabase and email RZR for confirmation. ──
+    //
+    // Set the webhook URL via the N8N_ADVANCE_REQUEST_WEBHOOK secret:
+    //   supabase secrets set N8N_ADVANCE_REQUEST_WEBHOOK="https://...your n8n webhook..."
+    // (or paste it into WEBHOOK_FALLBACK below). The call is best-effort —
+    // a webhook failure is logged but does NOT fail the advance request.
+    const WEBHOOK_FALLBACK = 'https://n8n.srv1749674.hstgr.cloud/webhook/email-for-rzr-requested-advance-invoice'   // ← you can paste the n8n webhook URL here instead of using the secret
+    const webhookUrl = Deno.env.get('N8N_ADVANCE_REQUEST_WEBHOOK') || WEBHOOK_FALLBACK
+
+    if (webhookUrl) {
+      try {
+        const resp = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'advance_request_submitted',
+            request_number: requestNumber,
+            batch_id: batch.id,
+            client_id: client.id,
+            client_name: client.name || null,
+            invoice_count: (invoices || []).length,
+            // The list of invoice numbers n8n needs to fetch + email about.
+            invoice_numbers: (invoices || []).map((i: any) => i.invoice_number),
+            invoices: (invoices || []).map((i: any) => ({
+              id: i.id,
+              invoice_number: i.invoice_number,
+            })),
+            submitted_by: user.email || null,
+            submitted_at: new Date().toISOString(),
+          }),
+        })
+        if (!resp.ok) console.error('n8n webhook returned', resp.status, await resp.text())
+      } catch (whErr) {
+        console.error('submit-advance-request: n8n webhook call failed:', whErr)
+      }
+    } else {
+      console.warn('submit-advance-request: no n8n webhook URL configured — skipped.')
+    }
+
     return new Response(
       JSON.stringify({ success: true, batch }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

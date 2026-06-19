@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { AlertTriangle, ExternalLink } from 'lucide-react'
-import { C } from '../../tokens'
+import { C, adminStatus } from '../../tokens'
 import { Modal, ModalBody, ModalFooter, Btn, Badge, Field, TimelineStep, useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
 
@@ -29,6 +29,7 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
   const [detail, setDetail]   = useState(null)
   const [timeline, setTimeline] = useState([])
   const [checks, setChecks]   = useState([])
+  const [submissions, setSubmissions] = useState([])   // dated Ryder send history
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -38,7 +39,7 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
 
   const fetchDetail = async () => {
     setLoading(true)
-    const [{ data: invData }, { data: tl }, { data: chk }] = await Promise.all([
+    const [{ data: invData }, { data: tl }, { data: chk }, { data: subs }] = await Promise.all([
       supabase
         .from('invoices')
         .select(`*, client:clients(name, debtor, contact_name, contact_email, factoring_rate, advance_rate)`)
@@ -54,10 +55,26 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
         .from('cheque_invoices')
         .select('cheque:cheques(id, check_number, ryder_conf_number, amount, status, drive_file_url, received_at)')
         .eq('invoice_id', inv.id),
+      // Dated history of each time the invoice was (re)sent to Ryder —
+      // read straight from audit_logs. n8n writes one audit row per send
+      // with source = 'ryder-submit' (or summary mentioning "sent to Ryder"),
+      // so each row's created_at is that submission's date.
+      supabase
+        .from('audit_logs')
+        .select('created_at, summary, source')
+        .eq('record_id', inv.id)
+        .or('source.eq.ryder-submit,summary.ilike.%sent to ryder%,summary.ilike.%submitted to ryder%')
+        .order('created_at', { ascending: true }),
     ])
     if (invData) setDetail(invData)
     if (tl)     setTimeline(tl)
     if (chk)    setChecks(chk.map(r => r.cheque).filter(Boolean))
+    // Map audit rows → submission entries with an attempt number.
+    if (subs) setSubmissions(subs.map((r, i) => ({
+      attempt: i + 1,
+      sent_at: r.created_at,
+      note: r.summary,
+    })))
     setLoading(false)
   }
 
@@ -71,15 +88,27 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
 
   const d = detail || inv
 
-  // Build timeline steps from DB rows + fill remaining steps
-  const STEPS = ['Payment Requested','Advance Confirmed','Advance Agreed','Advance Paid','Submitted to Ryder','Acknowledged','Paid']
+  // The lifecycle, in order. `status` is the DB value (unchanged); `label`
+  // is the friendly wording shown in the timeline.
+  //   Payment Requested → Confirmation email sent for advance (Advance Confirmed)
+  //   → Advance Agreed (RZR replied) → Advance Paid → Submitted to Ryder
+  //   → Acknowledged (Ryder) → Paid (cheque received)
+  const STEPS = [
+    { status: 'Payment Requested',  label: 'Payment Requested' },
+    { status: 'Advance Confirmed',  label: 'Confirmation Email Sent for Advance' },
+    { status: 'Advance Agreed',     label: 'Advance Agreed (RZR Replied)' },
+    { status: 'Advance Paid',       label: 'Advance Paid to RZR' },
+    { status: 'Submitted to Ryder', label: 'Invoice Submitted to Ryder' },
+    { status: 'Acknowledged',       label: 'Acknowledged by Ryder' },
+    { status: 'Paid',               label: 'Paid — Cheque Received' },
+  ]
   const doneSet = new Set(timeline.map(t => t.status))
-  const currentIdx = STEPS.findIndex(s => !doneSet.has(s))
+  const currentIdx = STEPS.findIndex(s => !doneSet.has(s.status))
 
-  const tlSteps = STEPS.map((label, i) => {
-    const hit = timeline.find(t => t.status === label)
+  const tlSteps = STEPS.map((step, i) => {
+    const hit = timeline.find(t => t.status === step.status)
     return {
-      label,
+      label: step.label,
       date: hit ? new Date(hit.occurred_at).toLocaleDateString() : '',
       done: !!hit,
       current: i === currentIdx,
@@ -101,7 +130,7 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
       ) : (
         <ModalBody>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18 }}>
-            <Badge status={d.status} />
+            <Badge status={d.status} label={adminStatus(d.status)} />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '250px 1fr', gap: 22 }}>
@@ -219,6 +248,54 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
                     <AlertTriangle size={15} color={C.red} />
                     <span style={{ fontSize: 13, color: C.red, fontWeight: 600 }}>{daysOut}+ DAYS</span>
                     <span style={{ fontSize: 12.5, color: '#991b1b' }}>Awaiting payment — following up</span>
+                  </div>
+                )}
+
+                {/* Dated history of each time we (re)sent the invoice to Ryder.
+                    Primary source = per-send audit_logs rows (one per send).
+                    Fallback = the resubmit_count + last_resubmitted_at columns
+                    that n8n updates, so we always show at least the count + last date. */}
+                {submissions.length === 0 && (d.resubmit_count ?? 0) > 0 && (
+                  <div style={{ marginTop: 12, border: `1px solid ${C.border}`, borderRadius: 9, padding: '10px 12px', background: '#fffbeb' }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Ryder Submission Log</div>
+                    <div style={{ fontSize: 12.5, color: C.text, fontWeight: 600 }}>
+                      Submitted to Ryder {d.resubmit_count}× {d.resubmit_count > 1 ? '(incl. resends)' : ''}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: C.textMut, marginTop: 2 }}>
+                      Last sent: {d.last_resubmitted_at ? new Date(d.last_resubmitted_at).toLocaleString() : '—'}
+                    </div>
+                  </div>
+                )}
+
+                {submissions.length > 0 && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+                      Ryder Submission Log ({submissions.length})
+                    </div>
+                    <div style={{ border: `1px solid ${C.border}`, borderRadius: 9, overflow: 'hidden' }}>
+                      {submissions.map((s, i) => (
+                        <div key={i} style={{
+                          display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+                          borderTop: i > 0 ? `1px solid ${C.border}` : undefined,
+                          background: s.attempt > 1 ? '#fffbeb' : '#fff',
+                        }}>
+                          <span style={{
+                            flexShrink: 0, width: 22, height: 22, borderRadius: '50%',
+                            background: s.attempt > 1 ? '#fef3c7' : C.primLt, color: s.attempt > 1 ? '#92400e' : C.primary,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800,
+                          }}>{s.attempt}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>
+                              {s.attempt === 1 ? 'First submission' : `Resubmission #${s.attempt - 1}`}
+                            </div>
+                            <div style={{ fontSize: 11, color: C.textMut }}>{s.note || ''}</div>
+                          </div>
+                          <span style={{ fontSize: 12, color: C.textSm, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                            {s.sent_at ? new Date(s.sent_at).toLocaleDateString() + ' ' + new Date(s.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

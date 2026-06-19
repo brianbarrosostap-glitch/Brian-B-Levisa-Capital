@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Check, X } from 'lucide-react'
-import { C, ROW_BG } from '../../tokens'
+import { C, ROW_BG, adminStatus } from '../../tokens'
 import { Card, Btn, Badge, Tabs, SearchBar, FilterChip, KebabMenu, TH, TD, Modal, ModalBody, ModalFooter, useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
 import InvoiceDetailModal from './InvoiceDetailModal'
@@ -268,7 +268,7 @@ export default function Master() {
                     {inv.resubmit_count > 0 && (
                       <span style={{ background: inv.resubmit_count >= 3 ? C.redLt : '#fef3c7', color: inv.resubmit_count >= 3 ? C.red : '#92400e', borderRadius: 9999, fontSize: 10, fontWeight: 700, padding: '1px 7px' }}>↻ {inv.resubmit_count}×</span>
                     )}
-                    <Badge status={inv.status} />
+                    <Badge status={inv.status} label={adminStatus(inv.status)} />
                   </div>
                 </div>
                 {[
@@ -334,7 +334,7 @@ export default function Master() {
                   <TD accent style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(inv.advance_amount)}</TD>
                   <TD>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Badge status={inv.status} />
+                      <Badge status={inv.status} label={adminStatus(inv.status)} />
                       {inv.resubmit_count > 0 && (
                         <span title={`Re-sent to Ryder ${inv.resubmit_count} time(s)`} style={{
                           background: inv.resubmit_count >= 3 ? C.redLt : '#fef3c7', color: inv.resubmit_count >= 3 ? C.red : '#92400e',

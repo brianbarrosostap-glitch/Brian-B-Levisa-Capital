@@ -8,7 +8,8 @@ import { VolumeChart, PipelineChart, ProfitTrendChart, OverdueAgingChart } from 
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const num = n => Number(n || 0).toLocaleString('en-US')
-const days = n => (n == null ? '—' : `${Number(n).toFixed(1)} days`)
+// Whole days only — no decimals (round to nearest, min 0).
+const days = n => (n == null ? '—' : `${Math.max(0, Math.round(Number(n)))} ${Math.round(Number(n)) === 1 ? 'day' : 'days'}`)
 
 // party: 'RZR' (customer we advance to) | 'Ryder' (debtor who pays us) | 'Lavisa' | null
 const PARTY_STYLE = {
@@ -22,7 +23,9 @@ const PartyTag = ({ party }) => {
   return <span style={{ background: s.bg, color: s.text, borderRadius: 5, fontSize: 9, fontWeight: 700, padding: '1px 6px', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{party}</span>
 }
 
-const KpiCard = ({ label, value, count, sub, party, borderColor, alert, valueColor, big }) => (
+// `amount` renders a BOLD $ line under the value (used by pipeline stages).
+// `sub` is the small muted caption.
+const KpiCard = ({ label, value, count, amount, sub, party, borderColor, alert, valueColor, big }) => (
   <div style={{
     background: alert ? '#fff8f8' : '#fff',
     border: `1px solid ${C.border}`,
@@ -35,6 +38,7 @@ const KpiCard = ({ label, value, count, sub, party, borderColor, alert, valueCol
       <PartyTag party={party} />
     </div>
     <div style={{ fontSize: big ? 26 : 22, fontWeight: 800, color: valueColor || (alert ? C.red : C.textB), letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+    {amount != null && <div style={{ fontSize: 14, fontWeight: 800, color: alert ? C.red : C.text, marginTop: 3, fontVariantNumeric: 'tabular-nums' }}>{amount}</div>}
     {count != null && <div style={{ fontSize: 11.5, color: C.textSm, marginTop: 2, fontWeight: 600 }}>{count} invoice{Number(count) === 1 ? '' : 's'}</div>}
     {sub && <div style={{ fontSize: 10.5, color: alert ? '#f87171' : C.textMut, marginTop: 2 }}>{sub}</div>}
   </div>
@@ -241,6 +245,7 @@ export default function Dashboard() {
   const [metricsLoading, setMetricsLoading] = useState(true)
 
   const [alerts, setAlerts]     = useState([])
+  const [overdueAlerts, setOverdueAlerts] = useState([])   // live overdue-with-Ryder list
   const [matchModal, setMatchModal] = useState(null)
   const [chequeModal, setChequeModal] = useState(null)
 
@@ -331,6 +336,25 @@ export default function Dashboard() {
         unit_number:    a.invoice?.unit_number,
       })))
     }
+
+    // ── Overdue with Ryder — computed live, shown in Needs Attention so
+    //    the admin can follow up. Acknowledged + due_date already passed. ──
+    const today = new Date().toISOString().slice(0, 10)
+    const { data: od } = await supabase
+      .from('invoices')
+      .select('id, invoice_number, unit_number, status, due_date, advance_amount')
+      .eq('status', 'Acknowledged')
+      .not('due_date', 'is', null)
+      .lt('due_date', today)
+      .order('due_date', { ascending: true })
+    setOverdueAlerts((od || []).map(i => ({
+      id: `overdue-${i.id}`,
+      type: 'overdue',
+      title: 'Overdue with Ryder',
+      detail: `Invoice ${i.invoice_number} (Unit ${i.unit_number || '—'}) — due ${i.due_date}, Ryder hasn't paid. Follow up.`,
+      invoice_id: i.invoice_number,
+      action_label: null,
+    })))
   }
 
   const handleResolved = (id) => {
@@ -346,54 +370,41 @@ export default function Dashboard() {
       {/* Global sticky date-range filter — controls every tile + chart */}
       <DateRangeBar preset={preset} custom={custom} applyPreset={applyPreset} applyCustom={applyCustom} />
 
-      {/* ── Section 1: Pipeline Status ──
-          The 6 STAGE tiles are mutually exclusive & exhaustive — each invoice
-          is in exactly one. They sum to Total. The rollup strip below
-          (Overdue / Open / Closed) OVERLAPS the stages and must NOT be added. */}
-      <SectionHeader title="Pipeline Status — Stages"
-        hint="each invoice is in exactly one stage — RZR = customer we advance · Ryder = debtor who pays" />
-      <Grid cols={6} tabletCols={3} mobileCols={2} gap={11}>
-        <KpiCard label="1 · Pending — RZR Uploaded" party="RZR" borderColor="#0369a1"
-          value={metricsLoading ? loadingTile : num(m.pending_count)} sub={metricsLoading ? 'not yet submitted' : `${fmt(m.pending_value)} · not yet submitted`} />
-        <KpiCard label="2 · Awaiting Confirmation" party="RZR" borderColor="#b45309"
-          value={metricsLoading ? loadingTile : num(m.awaiting_conf_count)} sub={metricsLoading ? 'RZR must confirm' : `${fmt(m.awaiting_conf_value)} · RZR must confirm`} />
-        <KpiCard label="3 · Open Payment — Owed RZR" party="RZR" borderColor="#7c3aed"
-          value={metricsLoading ? loadingTile : num(m.open_payment_count)} sub={metricsLoading ? 'awaiting wire to RZR' : `${fmt(m.open_payment_value)} · awaiting wire`} />
-        <KpiCard label="4 · Advance Paid — Awaiting Ryder" party="RZR" borderColor="#0e7490"
-          value={metricsLoading ? loadingTile : num(m.advance_paid_count)} sub={metricsLoading ? 'wired to RZR' : `${fmt(m.advance_paid_value)} · wired, not sent to Ryder`} />
-        <KpiCard label="5 · Pending with Ryder" party="Ryder" borderColor="#b45309"
-          value={metricsLoading ? loadingTile : num(m.pending_ryder_count)} sub={metricsLoading ? 'awaiting Ryder' : `${fmt(m.pending_ryder_value)} · submitted, awaiting Ryder`} />
-        <KpiCard label="6 · Collected from Ryder" party="Ryder" borderColor="#059669"
-          value={metricsLoading ? loadingTile : num(m.collected_ryder_count)} sub={metricsLoading ? 'cycle closed' : `${fmt(m.collected_ryder_value)} · received back`} />
+      {/* ── RZR side — the customer journey (upload → we pay them 97%) ── */}
+      <SectionHeader title="RZR — Customer Side" hint="invoices RZR uploads, through to us paying their 97% advance" />
+      <Grid cols={5} tabletCols={3} mobileCols={2} gap={11}>
+        <KpiCard label="Total RZR Uploaded" party="RZR" borderColor={C.primary}
+          value={metricsLoading ? loadingTile : num(m.total_invoices_count)} amount={metricsLoading ? null : fmt(m.total_invoices_value)} sub="all invoices" />
+        <KpiCard label="Pending — Not Yet Requested" party="RZR" borderColor="#0369a1"
+          value={metricsLoading ? loadingTile : num(m.pending_count)} amount={metricsLoading ? null : fmt(m.pending_value)} sub="uploaded, no advance asked" />
+        <KpiCard label="RZR Requested / Email Sent" party="RZR" borderColor="#7c3aed"
+          value={metricsLoading ? loadingTile : num(m.open_payment_count)} amount={metricsLoading ? null : fmt(m.open_payment_value)} sub="confirmation email sent — awaiting RZR reply" />
+        <KpiCard label="RZR Agreed to 97%" party="RZR" borderColor="#b45309"
+          value={metricsLoading ? loadingTile : num(m.awaiting_conf_count)} amount={metricsLoading ? null : fmt(m.awaiting_conf_value)} sub="RZR approved — not yet paid" />
+        <KpiCard label="Advance Paid to RZR" party="RZR" borderColor="#0e7490"
+          value={metricsLoading ? loadingTile : num(m.advance_paid_count)} amount={metricsLoading ? null : fmt(m.advance_paid_value)} sub="97% wired to RZR" />
       </Grid>
 
-      {/* Rollups & alerts — these OVERLAP the stages above (subsets / sums),
-          so they are deliberately separated and NOT meant to be added. */}
-      <SectionHeader title="Rollups & Alerts" hint="summary views of the stages above — these OVERLAP, do not add them" />
-      <Grid cols={4} tabletCols={2} mobileCols={2} gap={11}>
-        <KpiCard label="Total Invoices (incl. closed)" party="RZR" borderColor={C.primary} big
-          value={metricsLoading ? loadingTile : num(m.total_invoices_count)} sub={metricsLoading ? 'open + closed' : `${fmt(m.total_invoices_value)} · all stages`} />
-        <KpiCard label="Open / In-Pipeline" party="RZR" borderColor={C.primary}
-          value={metricsLoading ? loadingTile : num(m.active_invoice_count)} sub="stages 1–5 — live exposure" />
-        <KpiCard label="Closed (Paid)" party="Ryder" borderColor="#059669"
-          value={metricsLoading ? loadingTile : num(m.closed_count)} sub="stage 6 — cycle complete" />
-        <KpiCard label="Overdue 60+ — with Ryder" party="Ryder" borderColor={C.red} alert valueColor={C.red}
-          value={metricsLoading ? loadingTile : num(m.overdue_60_count)} sub={metricsLoading ? 'subset of stage 5' : `${fmt(m.overdue_60_value)} · subset of stage 5`} />
+      {/* ── Ryder side — the debtor journey (we send → they pay us) ── */}
+      <SectionHeader title="Ryder — Debtor Side" hint="invoice sent to Ryder, through to Ryder paying us back" />
+      <Grid cols={3} tabletCols={3} mobileCols={1} gap={11}>
+        <KpiCard label="Awaiting Ryder Confirmation" party="Ryder" borderColor="#b45309"
+          value={metricsLoading ? loadingTile : num(m.pending_ryder_count)} amount={metricsLoading ? null : fmt(m.pending_ryder_value)} sub="sent, awaiting Ryder reply" />
+        <KpiCard label="Overdue with Ryder" party="Ryder" borderColor={C.red} alert valueColor={C.red}
+          value={metricsLoading ? loadingTile : num(m.overdue_60_count)} amount={metricsLoading ? null : fmt(m.overdue_60_value)} sub="due date passed — follow up" />
+        <KpiCard label="Ryder Paid to Us" party="Ryder" borderColor="#059669"
+          value={metricsLoading ? loadingTile : num(m.collected_ryder_count)} amount={metricsLoading ? null : fmt(m.collected_ryder_value)} sub="cycle complete" />
       </Grid>
 
       {/* ── Section 2: Financial Summary ── */}
       <SectionHeader title="Financial Summary" hint={`all $ figures respect the date range · margin = ${ratePct}%`} />
-      <Grid cols={5} tabletCols={3} mobileCols={2} gap={11}>
-        <KpiCard label="Total Face Value" party="RZR" borderColor={C.primary} big
-          value={metricsLoading ? loadingTile : fmt(m.total_face_value)} sub="gross invoice value" />
+      <Grid cols={3} tabletCols={3} mobileCols={1} gap={11}>
         <KpiCard label="Total Advanced to RZR" party="RZR" borderColor="#0369a1" big
           value={metricsLoading ? loadingTile : fmt(m.total_advance_value)} sub={metricsLoading ? '' : `${num(m.total_advance_count)} invoices wired`} />
         <KpiCard label="Discount Revenue" party="Lavisa" borderColor="#059669" big
           value={metricsLoading ? loadingTile : fmt(m.discount_revenue)} sub={`${ratePct}% factoring fees`} />
         <KpiCard label="Total Profit" party="Lavisa" borderColor="#047857" big
           value={metricsLoading ? loadingTile : fmt(m.total_profit)} sub={`${ratePct}% × closed (Ryder-paid)`} />
-        <KpiCard label="Collected from Ryder" party="Ryder" borderColor="#7c3aed" big
-          value={metricsLoading ? loadingTile : fmt(m.collected_ryder_value)} sub="returned to Lavisa" />
       </Grid>
 
       {/* ── Section 3: Charts ── */}
@@ -420,32 +431,34 @@ export default function Dashboard() {
           value={metricsLoading ? loadingTile : num(m.active_invoice_count)} sub="not yet closed — matches Open tile above" />
       </Grid>
 
-      {/* Needs Attention */}
+      {/* Needs Attention — ONLY overdue-with-Ryder invoices (due payments). */}
+      {(() => { const allAlerts = overdueAlerts; return (
       <Card noPad>
         <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Needs Attention</span>
-            {alerts.length > 0 && (
-              <span style={{ background: '#fef9c3', color: '#b45309', borderRadius: 9999, fontSize: 11, fontWeight: 700, padding: '2px 8px' }}>
-                {alerts.length}
+            {allAlerts.length > 0 && (
+              <span style={{ background: '#fee2e2', color: C.red, borderRadius: 9999, fontSize: 11, fontWeight: 700, padding: '2px 8px' }}>
+                {allAlerts.length}
               </span>
             )}
           </div>
-          <span style={{ fontSize: 12, color: C.textMut }}>Manual review required — items below couldn't be matched automatically</span>
+          <span style={{ fontSize: 12, color: C.textMut }}>Overdue invoices with Ryder — due payment, follow up</span>
         </div>
 
-        {alerts.length === 0 ? (
+        {allAlerts.length === 0 ? (
           <div style={{ padding: '24px 18px', textAlign: 'center', fontSize: 13, color: C.textMut }}>
-            No items need attention right now.
+            No overdue payments right now.
           </div>
         ) : (
-          alerts.map((item, i) => {
+          allAlerts.map((item, i) => {
             const isAmber = item.type === 'conf_match'
+            const isOverdue = item.type === 'overdue'
             return (
               <div key={item.id} style={{
                 padding: '14px 18px',
                 background: isAmber ? '#fffdf5' : '#fff8f8',
-                borderBottom: i < alerts.length - 1 ? `1px solid ${C.border}` : undefined,
+                borderBottom: i < allAlerts.length - 1 ? `1px solid ${C.border}` : undefined,
                 display: 'flex', alignItems: 'center', gap: 14,
               }}>
                 <div style={{
@@ -461,17 +474,24 @@ export default function Dashboard() {
                   <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{item.title}</div>
                   <div style={{ fontSize: 12, color: C.textSm, lineHeight: 1.4, marginTop: 2 }}>{item.detail}</div>
                 </div>
-                <Btn variant="secondary" size="sm" onClick={() => {
-                  if (isAmber) setMatchModal(item)
-                  else setChequeModal(item)
-                }}>
-                  {item.action_label}
-                </Btn>
+                {/* Overdue rows are informational (no match action). */}
+                {!isOverdue && item.action_label && (
+                  <Btn variant="secondary" size="sm" onClick={() => {
+                    if (isAmber) setMatchModal(item)
+                    else setChequeModal(item)
+                  }}>
+                    {item.action_label}
+                  </Btn>
+                )}
+                {isOverdue && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: C.red, background: C.redLt, borderRadius: 9999, padding: '3px 10px', whiteSpace: 'nowrap' }}>OVERDUE</span>
+                )}
               </div>
             )
           })
         )}
       </Card>
+      ) })()}
 
       {matchModal  && <MatchModal  item={matchModal}  onClose={() => setMatchModal(null)}  onResolved={handleResolved} />}
       {chequeModal && <ChequeModal item={chequeModal} onClose={() => setChequeModal(null)} onResolved={handleResolved} />}

@@ -50,13 +50,16 @@ returns json language sql stable as $$
     'pending_count',             (select count(*) from scoped where status in ('Uploaded','Eligible')),
     'pending_value',             (select coalesce(sum(invoice_amount),0) from scoped where status in ('Uploaded','Eligible')),
 
-    'awaiting_conf_count',       (select count(*) from scoped where status = 'Advance Confirmed'),
-    'awaiting_conf_value',       (select coalesce(sum(invoice_amount),0) from scoped where status = 'Advance Confirmed'),
+    -- "Waiting for RZR Approval" = RZR has REPLIED / agreed to the 97%.
+    -- Only 'Advance Agreed' (the customer-replied state) counts here.
+    'awaiting_conf_count',       (select count(*) from scoped where status = 'Advance Agreed'),
+    'awaiting_conf_value',       (select coalesce(sum(advance_amount),0) from scoped where status = 'Advance Agreed'),
 
-    -- 'Ready for Payment' (legacy enum value) is folded in here so every
-    -- pre-payout invoice lands in this tile and nothing falls through.
-    'open_payment_count',        (select count(*) from scoped where status in ('Payment Requested','Advance Agreed','Ready for Payment')),
-    'open_payment_value',        (select coalesce(sum(advance_amount),0) from scoped where status in ('Payment Requested','Advance Agreed','Ready for Payment')),
+    -- "RZR Requested Advance" = requested / confirmation email sent, but RZR
+    -- has NOT replied yet. 'Advance Confirmed' (we emailed RZR) belongs here,
+    -- not in the approval tile. 'Ready for Payment' (legacy) folded in.
+    'open_payment_count',        (select count(*) from scoped where status in ('Payment Requested','Advance Confirmed','Ready for Payment')),
+    'open_payment_value',        (select coalesce(sum(advance_amount),0) from scoped where status in ('Payment Requested','Advance Confirmed','Ready for Payment')),
 
     -- Advance Paid but NOT yet submitted to Ryder — money is out the door
     -- to RZR, waiting to be sent to Ryder. This was previously uncounted.
@@ -66,8 +69,13 @@ returns json language sql stable as $$
     'pending_ryder_count',       (select count(*) from scoped where status in ('Submitted to Ryder','Acknowledged','Resubmitted')),
     'pending_ryder_value',       (select coalesce(sum(advance_amount),0) from scoped where status in ('Submitted to Ryder','Acknowledged','Resubmitted')),
 
-    'overdue_60_count',          (select count(*) from scoped where status in ('Submitted to Ryder','Acknowledged','Resubmitted') and ryder_submitted_at is not null and extract(day from (now() - ryder_submitted_at)) >= 60),
-    'overdue_60_value',          (select coalesce(sum(advance_amount),0) from scoped where status in ('Submitted to Ryder','Acknowledged','Resubmitted') and ryder_submitted_at is not null and extract(day from (now() - ryder_submitted_at)) >= 60),
+    -- Overdue = status is 'Acknowledged' (Ryder confirmed) AND the due_date
+    -- has passed. due_date = Ryder confirmation + 60 days (set by
+    -- ingest-confirmation), so a passed due_date means Ryder hasn't paid
+    -- within the 60-day window. Only Acknowledged counts — 'Submitted to
+    -- Ryder' is not yet acknowledged, so it isn't overdue here.
+    'overdue_60_count',          (select count(*) from scoped where status = 'Acknowledged' and due_date is not null and due_date < current_date),
+    'overdue_60_value',          (select coalesce(sum(advance_amount),0) from scoped where status = 'Acknowledged' and due_date is not null and due_date < current_date),
 
     -- ── Financial summary ────────────────────────────────────
     'total_face_value',          (select coalesce(sum(invoice_amount),0) from scoped),

@@ -70,3 +70,23 @@ export const CUSTOMER_STATUS_LABEL = {
 };
 
 export const customerStatus = (s) => CUSTOMER_STATUS_LABEL[s] || s;
+
+// Admin-facing status labels — friendlier wording matching the invoice
+// timeline, shown on status badges across the admin portal. The DB enum
+// value is unchanged; this is display only.
+export const ADMIN_STATUS_LABEL = {
+  'Uploaded':            'Uploaded',
+  'Eligible':            'Eligible',
+  'Payment Requested':   'Payment Requested',
+  'Advance Confirmed':   'Advance Confirmation Email Sent',
+  'Advance Agreed':      'Advance Agreed (RZR Replied)',
+  'Advance Paid':        'Advance Paid to RZR',
+  'Submitted to Ryder':  'Submitted to Ryder',
+  'Acknowledged':        'Acknowledged by Ryder',
+  'Resubmitted':         'Resubmitted to Ryder',
+  'Paid':                'Paid — Cheque Received',
+  'Void':                'Void',
+  'Cancelled':           'Cancelled',
+};
+
+export const adminStatus = (s) => ADMIN_STATUS_LABEL[s] || s;

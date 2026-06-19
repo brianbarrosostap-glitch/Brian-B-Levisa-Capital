@@ -124,7 +124,9 @@ export const Label = ({ children, style }) => (
 );
 
 /* ─── Status Badge ─────────────────────────────────────────── */
-export const Badge = ({ status, small }) => {
+// Colour is looked up by the raw `status`; `label` (optional) overrides the
+// displayed text (e.g. a friendlier admin label) without changing the colour.
+export const Badge = ({ status, label, small }) => {
   const s = STATUS_COLOURS[status] || { bg: '#f1f5f9', text: '#475569' };
   return (
     <span style={{
@@ -136,7 +138,7 @@ export const Badge = ({ status, small }) => {
       whiteSpace: 'nowrap',
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
       lineHeight: 1.5,
-    }}>{status}</span>
+    }}>{label ?? status}</span>
   );
 };
 
@@ -191,8 +193,11 @@ export const Field = ({ label, value, accent, red: redV, mono }) => (
 /* ─── Table helpers ─────────────────────────────────────────── */
 export const TH = ({ children, style }) => (
   <th style={{
-    padding: '10px 16px', fontSize: 10.5, fontWeight: 700, color: C.textMut,
-    letterSpacing: '0.04em', textTransform: 'uppercase', background: '#f7f9fb',
+    // Title Case (render text as written) instead of ALL-CAPS, so headers
+    // read "Invoice Date", "Advance @97%", with connecting words like "for"
+    // staying lowercase in the source text.
+    padding: '10px 16px', fontSize: 11, fontWeight: 700, color: C.textMut,
+    letterSpacing: '0.02em', background: '#f7f9fb',
     borderBottom: `1.5px solid ${C.border}`, whiteSpace: 'nowrap', textAlign: 'left',
     verticalAlign: 'middle',
     ...style,
