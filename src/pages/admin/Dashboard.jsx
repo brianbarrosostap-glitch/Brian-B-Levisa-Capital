@@ -3,22 +3,83 @@ import { AlertTriangle, AlertCircle, Check } from 'lucide-react'
 import { C } from '../../tokens'
 import { Card, Btn, Modal, ModalBody, ModalFooter, Field } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
+import { useDateRange, PRESETS } from '../../hooks/useDateRange'
+import { VolumeChart, PipelineChart, ProfitTrendChart, OverdueAgingChart } from './DashboardCharts'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const num = n => Number(n || 0).toLocaleString('en-US')
+const days = n => (n == null ? '—' : `${Number(n).toFixed(1)} days`)
 
-const KpiCard = ({ label, value, sub, borderColor, alert, valueColor }) => (
+// party: 'RZR' (customer we advance to) | 'Ryder' (debtor who pays us) | 'Lavisa' | null
+const PARTY_STYLE = {
+  RZR:    { bg: '#eff6ff', text: '#1e40af' },
+  Ryder:  { bg: '#f5f3ff', text: '#6d28d9' },
+  Lavisa: { bg: '#ecfdf5', text: '#047857' },
+}
+const PartyTag = ({ party }) => {
+  if (!party) return null
+  const s = PARTY_STYLE[party] || { bg: '#f1f5f9', text: '#475569' }
+  return <span style={{ background: s.bg, color: s.text, borderRadius: 5, fontSize: 9, fontWeight: 700, padding: '1px 6px', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{party}</span>
+}
+
+const KpiCard = ({ label, value, count, sub, party, borderColor, alert, valueColor, big }) => (
   <div style={{
     background: alert ? '#fff8f8' : '#fff',
     border: `1px solid ${C.border}`,
     borderLeft: `4px solid ${borderColor || C.primary}`,
-    borderRadius: 12, padding: '14px 16px',
+    borderRadius: 12, padding: big ? '16px 18px' : '14px 16px',
     boxShadow: '0 1px 3px rgba(0,0,0,0.07)',
   }}>
-    <div style={{ fontSize: 10, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.04em', lineHeight: 1.3, marginBottom: 8 }}>{label}</div>
-    <div style={{ fontSize: 22, fontWeight: 800, color: valueColor || (alert ? C.red : C.textB), letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6, marginBottom: 8 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.04em', lineHeight: 1.3 }}>{label}</div>
+      <PartyTag party={party} />
+    </div>
+    <div style={{ fontSize: big ? 26 : 22, fontWeight: 800, color: valueColor || (alert ? C.red : C.textB), letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+    {count != null && <div style={{ fontSize: 11.5, color: C.textSm, marginTop: 2, fontWeight: 600 }}>{count} invoice{Number(count) === 1 ? '' : 's'}</div>}
     {sub && <div style={{ fontSize: 10.5, color: alert ? '#f87171' : C.textMut, marginTop: 2 }}>{sub}</div>}
   </div>
 )
+
+const SectionHeader = ({ title, hint }) => (
+  <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '22px 2px 12px' }}>
+    <span style={{ fontSize: 13, fontWeight: 800, color: C.text, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{title}</span>
+    {hint && <span style={{ fontSize: 11.5, color: C.textMut }}>{hint}</span>}
+  </div>
+)
+
+/* ── Sticky global date-range filter ── */
+function DateRangeBar({ preset, custom, applyPreset, applyCustom }) {
+  return (
+    <div style={{
+      position: 'sticky', top: 0, zIndex: 20, background: C.bg,
+      padding: '8px 0 12px', marginBottom: 4,
+      display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+      borderBottom: `1px solid ${C.border}`,
+    }}>
+      <span style={{ fontSize: 11, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.04em', marginRight: 2 }}>Date Range</span>
+      {PRESETS.map(p => {
+        const on = preset === p.key
+        return (
+          <button key={p.key} onClick={() => applyPreset(p.key)} style={{
+            padding: '5px 11px', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            border: `1px solid ${on ? C.primary : C.border}`,
+            background: on ? C.primary : '#fff', color: on ? '#fff' : C.textSm,
+            fontFamily: 'inherit',
+          }}>{p.label}</button>
+        )
+      })}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginLeft: 4 }}>
+        <input type="date" value={custom.start} max={custom.end || undefined}
+          onChange={e => applyCustom(e.target.value, custom.end || e.target.value)}
+          style={{ padding: '4px 8px', borderRadius: 7, border: `1px solid ${preset === 'custom' ? C.primary : C.border}`, fontSize: 12, fontFamily: 'inherit', color: C.text }} />
+        <span style={{ fontSize: 12, color: C.textMut }}>→</span>
+        <input type="date" value={custom.end} min={custom.start || undefined}
+          onChange={e => applyCustom(custom.start || e.target.value, e.target.value)}
+          style={{ padding: '4px 8px', borderRadius: 7, border: `1px solid ${preset === 'custom' ? C.primary : C.border}`, fontSize: 12, fontFamily: 'inherit', color: C.text }} />
+      </div>
+    </div>
+  )
+}
 
 /* ── Match Confirmation Modal ── */
 function MatchModal({ item, onClose, onResolved }) {
@@ -140,19 +201,65 @@ function ChequeModal({ item, onClose, onResolved }) {
 }
 
 export default function Dashboard() {
-  const [kpi, setKpi]           = useState(null)
+  const { preset, custom, range, grain, applyPreset, applyCustom } = useDateRange('all')
+
+  const [metrics, setMetrics] = useState(null)
+  const [volume, setVolume]   = useState([])
+  const [profit, setProfit]   = useState([])
+  const [overdue, setOverdue] = useState([])
+  const [metricsLoading, setMetricsLoading] = useState(true)
+
   const [alerts, setAlerts]     = useState([])
   const [matchModal, setMatchModal] = useState(null)
   const [chequeModal, setChequeModal] = useState(null)
 
+  // All metrics + charts re-fetch whenever the shared date range changes,
+  // so nothing can drift out of sync.
   useEffect(() => {
-    fetchKpi()
-    fetchAlerts()
-  }, [])
+    let cancelled = false
+    setMetricsLoading(true)
+    Promise.all([
+      supabase.rpc('dashboard_metrics',      { p_start: range.start, p_end: range.end }),
+      supabase.rpc('dashboard_volume',       { p_start: range.start, p_end: range.end, p_grain: grain }),
+      supabase.rpc('dashboard_profit_trend', { p_start: range.start, p_end: range.end, p_grain: grain }),
+      fetchOverdueBuckets(range.start, range.end),
+    ]).then(([mRes, vRes, pRes, buckets]) => {
+      if (cancelled) return
+      if (mRes.error) console.error('dashboard_metrics:', mRes.error)
+      if (vRes.error) console.error('dashboard_volume:', vRes.error)
+      if (pRes.error) console.error('dashboard_profit_trend:', pRes.error)
+      setMetrics(mRes.data || null)
+      setVolume(vRes.data || [])
+      setProfit(pRes.data || [])
+      setOverdue(buckets)
+      setMetricsLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [range.start, range.end, grain])
 
-  const fetchKpi = async () => {
-    const { data } = await supabase.from('v_kpi').select('*').single()
-    if (data) setKpi(data)
+  useEffect(() => { fetchAlerts() }, [])
+
+  // Overdue aging buckets — computed live from invoices still out with Ryder.
+  const fetchOverdueBuckets = async (start, end) => {
+    const { data } = await supabase
+      .from('invoices')
+      .select('advance_amount, ryder_submitted_at, status, invoice_date')
+      .in('status', ['Submitted to Ryder', 'Acknowledged', 'Resubmitted'])
+      .not('ryder_submitted_at', 'is', null)
+      .gte('invoice_date', start)
+      .lte('invoice_date', end)
+    const now = Date.now()
+    const acc = { '0-30': 0, '31-60': 0, '60+': 0 }
+    for (const r of data || []) {
+      const days = Math.floor((now - new Date(r.ryder_submitted_at)) / 86400000)
+      const b = days <= 30 ? '0-30' : days <= 60 ? '31-60' : '60+'
+      acc[b] += Number(r.advance_amount || 0)
+    }
+    return [
+      { bucket: '0-30',  label: '0–30 days',  value: acc['0-30'] },
+      { bucket: '31-60', label: '31–60 days', value: acc['31-60'] },
+      { bucket: '60+',   label: '60+ days',   value: acc['60+'] },
+    ]
   }
 
   const fetchAlerts = async () => {
@@ -180,27 +287,80 @@ export default function Dashboard() {
     setAlerts(prev => prev.filter(a => a.id !== id))
   }
 
-  // fallback while loading
-  const d = kpi || {}
+  const m = metrics || {}
+  const ratePct = Math.round((Number(m.factoring_rate) || 0.03) * 100)
+  const loadingTile = '…'
 
   return (
     <div>
-      {/* KPI Grid row 1 */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 11, marginBottom: 11 }}>
-        <KpiCard label="Total Invoices"         value={d.total_invoices ?? '—'}       sub="all time"           borderColor={C.primary} />
-        <KpiCard label="Pending Invoices"        value={d.pending_invoices ?? '—'}     sub="not yet submitted"  borderColor="#0369a1" />
-        <KpiCard label="Awaiting Confirmation"   value={d.awaiting_confirmation ?? '—'} sub="customer must confirm" borderColor="#b45309" />
-        <KpiCard label="Open Payment Requests"   value={d.open_payment_requests ?? '—'} sub="awaiting wires"    borderColor="#7c3aed" />
-        <KpiCard label="Overdue 60+ Days"        value={d.overdue_60 ?? '—'}           sub="needs follow-up"    borderColor={C.red} alert valueColor={C.red} />
+      {/* Global sticky date-range filter — controls every tile + chart */}
+      <DateRangeBar preset={preset} custom={custom} applyPreset={applyPreset} applyCustom={applyCustom} />
+
+      {/* ── Section 1: Pipeline Status ── */}
+      <SectionHeader title="Pipeline Status"
+        hint={metricsLoading
+          ? 'where each invoice currently sits — RZR = customer we advance · Ryder = debtor who pays us'
+          : `${num(m.total_invoices_count)} total = ${num(m.active_invoice_count)} open + ${num(m.closed_count)} closed · RZR = customer we advance · Ryder = debtor who pays`} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 11 }}>
+        <KpiCard label="Total Invoices (incl. closed)" party="RZR" borderColor={C.primary}
+          value={metricsLoading ? loadingTile : num(m.total_invoices_count)} sub={metricsLoading ? 'open + closed' : `${fmt(m.total_invoices_value)} · open + closed`} />
+        <KpiCard label="Pending — RZR Uploaded" party="RZR" borderColor="#0369a1"
+          value={metricsLoading ? loadingTile : num(m.pending_count)} sub={metricsLoading ? 'not yet submitted' : `${fmt(m.pending_value)} · not yet submitted`} />
+        <KpiCard label="Awaiting Confirmation" party="RZR" borderColor="#b45309"
+          value={metricsLoading ? loadingTile : num(m.awaiting_conf_count)} sub={metricsLoading ? 'RZR must confirm' : `${fmt(m.awaiting_conf_value)} · RZR must confirm`} />
+        <KpiCard label="Open Payment — Owed to RZR" party="RZR" borderColor="#7c3aed"
+          value={metricsLoading ? loadingTile : num(m.open_payment_count)} sub={metricsLoading ? 'awaiting wire to RZR' : `${fmt(m.open_payment_value)} · awaiting wire`} />
+        <KpiCard label="Overdue 60+ — with Ryder" party="Ryder" borderColor={C.red} alert valueColor={C.red}
+          value={metricsLoading ? loadingTile : num(m.overdue_60_count)} sub={metricsLoading ? 'past 60 days' : `${fmt(m.overdue_60_value)} · follow up`} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 11, marginTop: 11 }}>
+        <KpiCard label="Pending with Ryder" party="Ryder" borderColor="#b45309"
+          value={metricsLoading ? loadingTile : num(m.pending_ryder_count)} sub={metricsLoading ? 'out for collection' : `${fmt(m.pending_ryder_value)} · advanced, awaiting Ryder`} />
+        <KpiCard label="Collected from Ryder" party="Ryder" borderColor="#059669"
+          value={metricsLoading ? loadingTile : num(m.collected_ryder_count)} sub={metricsLoading ? 'cycle closed' : `${fmt(m.collected_ryder_value)} · received back`} />
+        <KpiCard label="Open / In-Pipeline" party="RZR" borderColor={C.primary}
+          value={metricsLoading ? loadingTile : num(m.active_invoice_count)} sub="not yet closed — live exposure" />
+        <KpiCard label="Closed (Paid)" party="Ryder" borderColor="#059669"
+          value={metricsLoading ? loadingTile : num(m.closed_count)} sub={metricsLoading ? 'cycle complete' : `${fmt(m.closed_value)} · cycle complete`} />
       </div>
 
-      {/* KPI Grid row 2 */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 11, marginBottom: 26 }}>
-        <KpiCard label="Total Face Value"        value={fmt(d.total_face_value)}      sub="across all invoices"  borderColor={C.primary} />
-        <KpiCard label="Total Advanced"          value={fmt(d.total_advanced)}        sub="wired to clients"     borderColor="#0369a1" />
-        <KpiCard label="Discount Revenue"        value={fmt(d.discount_revenue)}      sub="3% factoring fees"    borderColor="#059669" />
-        <KpiCard label="Pending with Ryder"      value={fmt(d.pending_with_ryder)}    sub="out for collection"   borderColor="#b45309" />
-        <KpiCard label="Collected from Ryder"    value={fmt(d.collected_from_ryder)}  sub="received back"        borderColor="#7c3aed" />
+      {/* ── Section 2: Financial Summary ── */}
+      <SectionHeader title="Financial Summary" hint={`all $ figures respect the date range · margin = ${ratePct}%`} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 11 }}>
+        <KpiCard label="Total Face Value" party="RZR" borderColor={C.primary} big
+          value={metricsLoading ? loadingTile : fmt(m.total_face_value)} sub="gross invoice value" />
+        <KpiCard label="Total Advanced to RZR" party="RZR" borderColor="#0369a1" big
+          value={metricsLoading ? loadingTile : fmt(m.total_advance_value)} sub={metricsLoading ? '' : `${num(m.total_advance_count)} invoices wired`} />
+        <KpiCard label="Discount Revenue" party="Lavisa" borderColor="#059669" big
+          value={metricsLoading ? loadingTile : fmt(m.discount_revenue)} sub={`${ratePct}% factoring fees`} />
+        <KpiCard label="Total Profit" party="Lavisa" borderColor="#047857" big
+          value={metricsLoading ? loadingTile : fmt(m.total_profit)} sub={`${ratePct}% × closed (Ryder-paid)`} />
+        <KpiCard label="Collected from Ryder" party="Ryder" borderColor="#7c3aed" big
+          value={metricsLoading ? loadingTile : fmt(m.collected_ryder_value)} sub="returned to Lavisa" />
+      </div>
+
+      {/* ── Section 3: Charts ── */}
+      <SectionHeader title="Charts" hint="all series pull live from the selected range" />
+      {metricsLoading ? (
+        <Card><div style={{ padding: 40, textAlign: 'center', color: C.textMut, fontSize: 13 }}>Loading charts…</div></Card>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
+          <VolumeChart data={volume} />
+          <PipelineChart metrics={m} />
+          <ProfitTrendChart data={profit} rate={Number(m.factoring_rate) || 0.03} />
+          <OverdueAgingChart buckets={overdue} />
+        </div>
+      )}
+
+      {/* ── Section 4: Operational Metrics ── */}
+      <SectionHeader title="Operational Metrics" hint="cycle timing — spot slow stages and slow payers" />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 11, marginBottom: 26 }}>
+        <KpiCard label="Avg Days to Advance" party="RZR" borderColor="#0369a1"
+          value={metricsLoading ? loadingTile : days(m.avg_days_to_advance)} sub="RZR upload → advance paid" />
+        <KpiCard label="Avg Days to Ryder Payment" party="Ryder" borderColor="#7c3aed"
+          value={metricsLoading ? loadingTile : days(m.avg_days_to_ryder_payment)} sub="submitted to Ryder → collected" />
+        <KpiCard label="Open / In-Pipeline Count" party="RZR" borderColor={C.primary}
+          value={metricsLoading ? loadingTile : num(m.active_invoice_count)} sub="not yet closed — matches Open tile above" />
       </div>
 
       {/* Needs Attention */}

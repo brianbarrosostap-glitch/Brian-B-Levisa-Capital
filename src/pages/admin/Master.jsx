@@ -128,7 +128,7 @@ export default function Master() {
     // Keep the admin list in sync with status changes made elsewhere
     // (customer submits, n8n/email ingest, etc.) — refresh when the
     // window/tab regains focus or becomes visible.
-    const refresh = () => { fetchInvoices(); fetchPendingBatch() }
+    const refresh = () => { fetchInvoices(true); fetchPendingBatch() }   // silent — don't blank the table
     const onVis = () => { if (!document.hidden) refresh() }
     window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', onVis)
@@ -138,14 +138,20 @@ export default function Master() {
     }
   }, [])
 
-  const fetchInvoices = async () => {
-    setLoading(true)
-    const { data } = await supabase
+  // `silent` = background refresh (focus/visibility) that must NOT blank the
+  // table — otherwise statuses flash empty on every refocus. Only the first
+  // load shows the spinner.
+  const fetchInvoices = async (silent = false) => {
+    if (!silent) setLoading(true)
+    const { data, error } = await supabase
       .from('invoices')
-      .select(`id, invoice_number, unit_number, invoice_date, invoice_amount, advance_amount, status, batch_id, client:clients(name)`)
+      .select(`id, invoice_number, po_number, unit_number, invoice_date, invoice_amount, advance_amount, status, batch_id, client:clients(name)`)
       .order('invoice_date', { ascending: false })
-    if (data) setInvoices(data)
-    setLoading(false)
+    if (error) console.error('Master fetchInvoices failed:', error)
+    // Only overwrite when we actually got rows back — never wipe the table
+    // (and the visible statuses) just because a background refetch errored.
+    if (Array.isArray(data)) setInvoices(data)
+    if (!silent) setLoading(false)
   }
 
   const fetchPendingBatch = async () => {
@@ -176,14 +182,15 @@ export default function Master() {
 
   const list = (tab === 'active' ? active : tab === 'void' ? voided : cancelled).filter(i => {
     const q = search.toLowerCase()
-    const matchQ = !q || i.invoice_number?.toLowerCase().includes(q) || i.unit_number?.includes(q)
+    const matchQ = !q || i.invoice_number?.toLowerCase().includes(q) || i.unit_number?.includes(q) || i.po_number?.toLowerCase().includes(q)
     const matchS = !statusFilter || i.status === statusFilter
     return matchQ && matchS
   })
 
-  const pending      = active.filter(i => i.status === 'Payment Requested')
-  const totalPending = pending.reduce((s, i) => s + Number(i.invoice_amount), 0)
-  const totalAdvPend = pending.reduce((s, i) => s + Number(i.advance_amount), 0)
+  // Footer totals the ENTIRE visible table (all rows currently shown after
+  // tab/search/status filtering) — not just the Payment-Requested subset.
+  const listTotalInvoice = list.reduce((s, i) => s + Number(i.invoice_amount), 0)
+  const listTotalAdvance = list.reduce((s, i) => s + Number(i.advance_amount), 0)
   const statuses     = [...new Set(invoices.map(i => i.status))]
 
   const handleMarkStatus = async (inv, action) => {
@@ -204,7 +211,9 @@ export default function Master() {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth="2.5"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20"/></svg>
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: C.textB }}>New advance request — {batch.request_number} </span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: C.textB }}>
+                New advance request — {invs.length > 0 ? invs.map(i => i.invoice_number).join(', ') : '—'}{' '}
+              </span>
               <span style={{ fontSize: 12, color: C.textSm }}>
                 {invs.length} invoice{invs.length !== 1 ? 's' : ''} · {fmt(invs.reduce((s,i)=>s+Number(i.invoice_amount),0))} · Submitted by {batch.client?.name} · {new Date(batch.submitted_at).toLocaleDateString()}
               </span>
@@ -243,11 +252,12 @@ export default function Master() {
           <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>Loading invoices…</div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
             <thead>
               <tr>
                 <TH>Invoice Date</TH>
                 <TH>Invoice #</TH>
+                <TH>PO #</TH>
                 <TH>Unit #</TH>
                 <TH style={{ textAlign: 'right' }}>Invoice Amount</TH>
                 <TH style={{ textAlign: 'right' }}>Advance @97%</TH>
@@ -265,6 +275,7 @@ export default function Master() {
                 >
                   <TD muted>{new Date(inv.invoice_date).toLocaleDateString()}</TD>
                   <TD mono>{inv.invoice_number}</TD>
+                  <TD mono>{inv.po_number || '—'}</TD>
                   <TD muted>{inv.unit_number}</TD>
                   <TD style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(inv.invoice_amount)}</TD>
                   <TD accent style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(inv.advance_amount)}</TD>
@@ -282,14 +293,14 @@ export default function Master() {
                 </tr>
               ))}
             </tbody>
-            {tab === 'active' && (
+            {list.length > 0 && (
               <tfoot>
                 <tr style={{ background: '#f0faf5', borderTop: `2px solid ${C.primary}` }}>
-                  <td colSpan={3} style={{ padding: '11px 13px', fontSize: 10.5, fontWeight: 700, color: C.primary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Total Pending ({pending.length})
+                  <td colSpan={4} style={{ padding: '11px 13px', fontSize: 10.5, fontWeight: 700, color: C.primary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Total ({list.length} shown)
                   </td>
-                  <td style={{ padding: '11px 13px', textAlign: 'right', fontSize: 13, fontWeight: 700, color: C.primary, fontVariantNumeric: 'tabular-nums' }}>{fmt(totalPending)}</td>
-                  <td style={{ padding: '11px 13px', textAlign: 'right', fontSize: 13, fontWeight: 700, color: C.primary, fontVariantNumeric: 'tabular-nums' }}>{fmt(totalAdvPend)}</td>
+                  <td style={{ padding: '11px 13px', textAlign: 'right', fontSize: 13, fontWeight: 700, color: C.primary, fontVariantNumeric: 'tabular-nums' }}>{fmt(listTotalInvoice)}</td>
+                  <td style={{ padding: '11px 13px', textAlign: 'right', fontSize: 13, fontWeight: 700, color: C.primary, fontVariantNumeric: 'tabular-nums' }}>{fmt(listTotalAdvance)}</td>
                   <td colSpan={2} />
                 </tr>
               </tfoot>

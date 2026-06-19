@@ -87,6 +87,7 @@ Deno.serve(async (req) => {
       client_name,
       client_id: client_id_in,
       unit_number = '',
+      po_number = null,        // Purchase Order number printed on the invoice
       invoice_date,
       due_date,
       invoice_amount,
@@ -134,6 +135,7 @@ Deno.serve(async (req) => {
       invoice_number,
       client_id,
       unit_number,
+      po_number,
       invoice_date: invoice_date || new Date().toISOString().slice(0, 10),
       due_date: due_date || null,
       invoice_amount,
@@ -174,14 +176,18 @@ Deno.serve(async (req) => {
           message: `Invoice ${invoice_number} is at status "${existing.status}" and cannot be amount-updated. An admin alert was raised.`,
         }, 409)
       }
-      // Same amount → just refresh the Drive link, nothing risky.
+      // Same amount → safe to refresh non-financial metadata (Drive link,
+      // PO#). These don't change the money, so they're allowed even on a
+      // locked invoice. (po_number only set if provided, so we never wipe it.)
+      const metaUpdate: Record<string, unknown> = { drive_file_id, drive_file_url }
+      if (po_number != null) metaUpdate.po_number = po_number
       const { data: refreshed } = await service
         .from('invoices')
-        .update({ drive_file_id, drive_file_url })
+        .update(metaUpdate)
         .eq('id', existing.id)
         .select()
         .single()
-      return json({ success: true, invoice: refreshed, updated: true, note: 'Drive link refreshed only.' })
+      return json({ success: true, invoice: refreshed, updated: true, note: 'Drive link / PO# refreshed.' })
     }
 
     // ── Case 2: insert new OR update an editable invoice ──────

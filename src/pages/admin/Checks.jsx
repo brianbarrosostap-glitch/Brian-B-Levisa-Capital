@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { C } from '../../tokens'
-import { Card, SearchBar, FilterChip, Tabs, TH, TD } from '../../components/ui'
+import { Card, SearchBar, TH, TD } from '../../components/ui'
 import { supabase } from '../../lib/supabase'
 
 const fmt = n => n == null ? '—' : '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -44,8 +44,6 @@ const DriveLink = ({ url }) => (
 export default function Checks() {
   const [checks, setChecks]   = useState([])
   const [search, setSearch]   = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
-  const [tab, setTab]         = useState('all')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { fetchChecks() }, [])
@@ -61,42 +59,23 @@ export default function Checks() {
     setLoading(false)
   }
 
-  const byTab = tab === 'all'
-    ? checks
-    : checks.filter(c => c.status === tab)
-
-  const list = byTab.filter(c => {
+  // Simple records list — no status tabs/filters. Unmatched cheques are
+  // handled by an email alert to the admin (raised in ingest-check), so
+  // this screen just shows the raw cheque records, searchable.
+  const list = checks.filter(c => {
     const q = search.toLowerCase()
-    const matchQ = !q
+    return !q
       || c.check_number?.toLowerCase().includes(q)
       || c.ryder_conf_number?.toLowerCase().includes(q)
       || c.invoice_numbers?.toLowerCase().includes(q)
       || c.invoice_number?.toLowerCase().includes(q)
-    const matchS = !statusFilter || c.status === statusFilter
-    return matchQ && matchS
   })
-
-  const counts = {
-    all:        checks.length,
-    matched:    checks.filter(c => c.status === 'matched').length,
-    unmatched:  checks.filter(c => c.status === 'unmatched').length,
-    unreadable: checks.filter(c => c.status === 'unreadable').length,
-  }
 
   return (
     <div>
       <Card noPad>
         <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <SearchBar placeholder="Search cheque #, conf #, invoice #…" value={search} onChange={setSearch} />
-          <FilterChip label="Status" options={['matched', 'unmatched', 'unreadable']} value={statusFilter} onChange={setStatusFilter} />
-        </div>
-        <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}` }}>
-          <Tabs active={tab} onChange={setTab} tabs={[
-            { key: 'all',        label: 'All',        count: counts.all },
-            { key: 'matched',    label: 'Matched',    count: counts.matched },
-            { key: 'unmatched',  label: 'Unmatched',  count: counts.unmatched },
-            { key: 'unreadable', label: 'Unreadable', count: counts.unreadable },
-          ]} />
         </div>
 
         {loading ? (

@@ -32,7 +32,7 @@ export default function AdvancedInvoices() {
 
     const { data } = await supabase
       .from('invoices')
-      .select('id, invoice_number, invoice_amount, advance_amount, submitted_at, status, drive_file_url')
+      .select('id, invoice_number, po_number, invoice_amount, advance_amount, submitted_at, status, drive_file_url')
       .eq('client_id', client.id)
       .not('submitted_at', 'is', null)
       .order('submitted_at', { ascending: false })
@@ -62,6 +62,7 @@ export default function AdvancedInvoices() {
               <thead>
                 <tr>
                   <TH>Invoice #</TH>
+                  <TH>PO #</TH>
                   <TH style={{ textAlign: 'right' }}>Invoice Amount</TH>
                   <TH style={{ textAlign: 'right' }}>Advance </TH>
                   <TH>Submitted</TH>
@@ -79,6 +80,7 @@ export default function AdvancedInvoices() {
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
                       <TD mono>{inv.invoice_number}</TD>
+                      <TD mono>{inv.po_number || '—'}</TD>
                       <TD style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(inv.invoice_amount)}</TD>
                       <TD accent style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                         {approved ? fmt(inv.advance_amount) : <span style={{ color: C.textMut, fontWeight: 400 }}>—</span>}
@@ -98,7 +100,7 @@ export default function AdvancedInvoices() {
                   )
                 })}
                 {invoices.length === 0 && (
-                  <tr><td colSpan={6} style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>No advanced invoices yet.</td></tr>
+                  <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>No advanced invoices yet.</td></tr>
                 )}
               </tbody>
             </table>

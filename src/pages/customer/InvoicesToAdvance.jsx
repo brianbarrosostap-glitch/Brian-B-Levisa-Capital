@@ -60,8 +60,6 @@ function SubmitModal({ selected, onClose, onSubmit }) {
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
   const total = selected.reduce((s, i) => s + Number(i.invoice_amount), 0)
-  const adv   = selected.reduce((s, i) => s + Number(i.advance_amount), 0)
-  const fee   = total - adv
 
   const handleSubmit = async () => {
     setLoading(true)
@@ -80,18 +78,14 @@ function SubmitModal({ selected, onClose, onSubmit }) {
   return (
     <Modal onClose={onClose} title="Confirm Advance Request" subtitle={`${selected.length} selected — review before sending`} width={500}>
       <ModalBody>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', marginBottom: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', marginBottom: 20 }}>
           <div style={{ padding: '14px 16px', textAlign: 'center', borderRight: `1px solid ${C.border}` }}>
             <div style={{ fontSize: 10.5, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Invoices</div>
             <div style={{ fontSize: 22, fontWeight: 800, color: C.textB }}>{selected.length}</div>
           </div>
-          <div style={{ padding: '14px 16px', textAlign: 'center', borderRight: `1px solid ${C.border}` }}>
+          <div style={{ padding: '14px 16px', textAlign: 'center' }}>
             <div style={{ fontSize: 10.5, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Invoice Total</div>
             <div style={{ fontSize: 16, fontWeight: 800, color: C.textB, fontVariantNumeric: 'tabular-nums' }}>{fmt(total)}</div>
-          </div>
-          <div style={{ padding: '14px 16px', textAlign: 'center', background: '#f6fef9' }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: C.primary, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>You Receive</div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: C.primary, fontVariantNumeric: 'tabular-nums' }}>{fmt(adv)}</div>
           </div>
         </div>
 
@@ -99,23 +93,11 @@ function SubmitModal({ selected, onClose, onSubmit }) {
         {selected.map(inv => (
           <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: `1px solid ${C.border}` }}>
             <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13 }}>{inv.invoice_number}</span>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-              <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13 }}>{fmt(inv.invoice_amount)}</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: C.primary, fontVariantNumeric: 'tabular-nums' }}>→ {fmt(inv.advance_amount)}</span>
-            </div>
+            <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13 }}>{fmt(inv.invoice_amount)}</span>
           </div>
         ))}
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', marginTop: 4 }}>
-          <span style={{ fontSize: 12, color: C.textSm }}>3% Factoring Fee</span>
-          <span style={{ fontSize: 13, fontWeight: 600, color: C.textSm, fontVariantNumeric: 'tabular-nums' }}>+{fmt(fee)}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: `1.5px solid ${C.primary}` }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: C.primary, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Your 97% Advance</span>
-          <span style={{ fontSize: 16, fontWeight: 800, color: C.primary, fontVariantNumeric: 'tabular-nums' }}>{fmt(adv)}</span>
-        </div>
-
-        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 13px', fontSize: 12.5, color: '#1e40af', marginTop: 10 }}>
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 13px', fontSize: 12.5, color: '#1e40af', marginTop: 16 }}>
           Funds are wired after Levisa reviews and confirms. Your invoices will show as <strong>Submitted</strong> until then.
         </div>
         {error && (

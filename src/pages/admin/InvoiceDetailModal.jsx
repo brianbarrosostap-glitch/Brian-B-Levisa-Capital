@@ -140,6 +140,8 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
                   <Field label="Invoice Amount" value={fmt(d.invoice_amount)} />
                   <Field label={`Advance @${Math.round((d.advance_rate || 0.97) * 100)}%`} value={fmt(d.advance_amount)} accent />
                   <Field label="Due Date" value={d.due_date ? new Date(d.due_date).toLocaleDateString() : '—'} />
+                  <Field label="PO #" value={d.po_number || '—'} mono />
+                  <Field label="Unit #" value={d.unit_number || '—'} mono />
                 </div>
               </div>
 

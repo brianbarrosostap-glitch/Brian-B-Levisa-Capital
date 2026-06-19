@@ -294,8 +294,11 @@ export const KebabMenu = ({ items }) => {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button onClick={() => setOpen(o => !o)} style={{
+    // stopPropagation on the whole menu so clicking the dots or any item
+    // never bubbles up to a parent row's onClick (which would also open
+    // the detail modal). This makes the kebab safe in clickable rows.
+    <div ref={ref} style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+      <button onClick={e => { e.stopPropagation(); setOpen(o => !o); }} style={{
         width: 26, height: 26, borderRadius: 6, border: `1px solid ${C.border}`,
         background: open ? '#f0faf5' : '#fff', cursor: 'pointer',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -307,7 +310,7 @@ export const KebabMenu = ({ items }) => {
           padding: 5, minWidth: 172, zIndex: 100,
         }}>
           {items.map((item, i) => (
-            <button key={i} onClick={() => { item.onClick(); setOpen(false); }} style={{
+            <button key={i} onClick={e => { e.stopPropagation(); item.onClick(); setOpen(false); }} style={{
               display: 'flex', alignItems: 'center', gap: 8, width: '100%',
               padding: '7px 10px', borderRadius: 6, border: 'none', background: 'transparent',
               fontSize: 12.5, fontWeight: 500, cursor: 'pointer', textAlign: 'left',
@@ -358,12 +361,15 @@ export const FilterChip = ({ label, options, value, onChange }) => {
     <div ref={ref} style={{ position: 'relative' }}>
       <button onClick={() => setOpen(o => !o)} style={{
         display: 'flex', alignItems: 'center', gap: 6, padding: '7px 11px',
-        borderRadius: 8, border: `1px solid ${C.border}`, background: '#fff',
-        fontSize: 12.5, color: C.textSm, cursor: 'pointer',
+        borderRadius: 8, border: `1px solid ${value ? C.primary : C.border}`,
+        background: value ? '#f0faf5' : '#fff',
+        fontSize: 12.5, color: value ? C.primary : C.textSm, fontWeight: value ? 600 : 400, cursor: 'pointer',
         fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
       }}>
         <span>{value || label}</span>
-        <ChevronDown size={12} />
+        {value
+          ? <X size={13} onClick={(e) => { e.stopPropagation(); onChange(''); }} style={{ cursor: 'pointer' }} />
+          : <ChevronDown size={12} />}
       </button>
       {open && options && (
         <div style={{
@@ -371,6 +377,18 @@ export const FilterChip = ({ label, options, value, onChange }) => {
           border: `1px solid ${C.border}`, borderRadius: 9, boxShadow: shadowMd,
           padding: 5, minWidth: 160, zIndex: 100,
         }}>
+          {/* Clear / show-all entry */}
+          <button onClick={() => { onChange(''); setOpen(false); }} style={{
+            display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+            padding: '7px 10px', borderRadius: 6, border: 'none',
+            background: 'transparent', fontSize: 12.5, cursor: 'pointer', textAlign: 'left',
+            color: value ? C.text : C.primary, fontWeight: value ? 400 : 600,
+            fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+          }}>
+            {!value && <Check size={12} color={C.primary} />}
+            All {label.toLowerCase()}
+          </button>
+          <div style={{ height: 1, background: C.border, margin: '4px 2px' }} />
           {options.map(opt => (
             <button key={opt} onClick={() => { onChange(opt === value ? '' : opt); setOpen(false); }} style={{
               display: 'flex', alignItems: 'center', gap: 8, width: '100%',

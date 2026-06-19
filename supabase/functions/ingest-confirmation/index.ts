@@ -108,10 +108,18 @@ Deno.serve(async (req) => {
       // Ryder confirmed payment — stamp conf + advance status.
       update.ryder_confirmed_at = now
       if (conf_number) update.ryder_conf_number = conf_number
-      if (inv.status === 'Submitted to Ryder') update.status = 'Acknowledged'
+      if (inv.status === 'Submitted to Ryder') {
+        update.status = 'Acknowledged'
+        // Ryder pays within 60 days of acknowledgement → set the due date
+        // to confirmation date + 60 days. This is what the overdue-60 logic
+        // and the dashboard "Overdue with Ryder" tile track against.
+        const dueDate = new Date(now)
+        dueDate.setDate(dueDate.getDate() + 60)
+        update.due_date = dueDate.toISOString().slice(0, 10)   // 'YYYY-MM-DD'
+      }
       summary = `Ryder confirmed invoice ${inv.invoice_number}`
         + (conf_number ? ` (conf #${conf_number})` : '')
-        + (update.status ? ` → Acknowledged` : '')
+        + (update.status ? ` → Acknowledged, due ${update.due_date}` : '')
     }
 
     const { data: updated, error: upErr } = await service

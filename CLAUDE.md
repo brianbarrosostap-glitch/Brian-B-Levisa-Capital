@@ -52,6 +52,19 @@ The `ingest-*` functions verify the caller holds the **service_role** key. They 
 ### Notifications are ROLE-TARGETED (changed 2026-06-18)
 - The DB status-change trigger was DROPPED (`20260618000003_notifications_role_based.sql`). Notifications are now inserted by edge functions with an explicit `audience` ('admin' | 'customer') + `client_id`. `NotificationBell` takes a `role` prop and filters by audience; customer reads are further RLS-scoped to their own client. Do NOT re-add a blanket DB trigger.
 
+### PO number (added 2026-06-18)
+- **`invoices.po_number`** (text) — Purchase Order number printed on the invoice (e.g. "0245437560"). Migration `20260618000005_invoice_po_number.sql`. Extracted by n8n/Gemini and sent to `ingest-invoice` as `po_number`. Surfaced in admin Master table + InvoiceDetailModal and customer AdvancedInvoices.
+- **Cheque→invoice direct ref:** `cheques.invoice_number` + `cheques.invoice_id` (FK) added (migration `20260618000004`). `ingest-check` accepts a single `invoice_number` (primary) plus the existing `invoice_numbers[]`; the join table `cheque_invoices` still handles multi-invoice cheques. Cheques tab shows an "Invoice #" column.
+
+### Dashboard rebuilt — dynamic + date-filtered (2026-06-19)
+- The admin Dashboard is fully data-driven (no static numbers). It no longer reads `v_kpi`; instead it calls SQL functions in migration `20260619000001_dashboard_metrics.sql`:
+  - `dashboard_metrics(p_start, p_end)` → JSON of every tile (pipeline status, financial summary, operational metrics), filtered by **invoice_date** in range.
+  - `dashboard_volume(p_start,p_end,p_grain)` and `dashboard_profit_trend(...)` → chart series.
+  - `fn_factoring_rate()` → the **3% margin as a named function** (change it there to update Total Profit everywhere). Surfaced to the UI as `metrics.factoring_rate`.
+- **Charts use Recharts** (`npm i recharts`, the only chart dep). Components in `src/pages/admin/DashboardCharts.jsx`: Volume (bar), Pipeline Breakdown (donut), Profit Trend (line), Overdue Aging buckets (bar). Overdue buckets are computed client-side from a live invoices query.
+- **Shared date filter:** `src/hooks/useDateRange.js` (presets: This Month/Quarter/Last 6 Months/This Year/All Time + custom range). One `{start,end}` drives ALL queries so metrics never drift. Sticky `DateRangeBar` at top.
+- **Labeling convention:** every tile/chart tags the party — **RZR** (customer we advance to), **Ryder** (debtor who pays Lavisa), **Lavisa** (our earnings). Keep this on any new metric.
+
 ### Other UI (2026-06-18)
 - **Admin Audit Logs tab** — `src/pages/admin/AuditLogs.jsx` reads `v_audit_logs`. Admin nav: Dashboard / Master / Cheques / Audit Logs (the "Checks" tab is labelled **Cheques** now; internal route key is `cheques`).
 - **Customer "remove" is UI-only and persisted** in `localStorage` (`customer.hiddenInvoices`) — stays hidden across refresh; never touches the DB.
