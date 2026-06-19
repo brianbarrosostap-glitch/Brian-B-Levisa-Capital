@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { AlertTriangle, ExternalLink } from 'lucide-react'
 import { C } from '../../tokens'
-import { Modal, ModalBody, ModalFooter, Btn, Badge, Field, TimelineStep } from '../../components/ui'
+import { Modal, ModalBody, ModalFooter, Btn, Badge, Field, TimelineStep, useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -25,6 +25,7 @@ const DriveLink = ({ url, label = 'View' }) => (
 )
 
 export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh }) {
+  const isMobile = useIsMobile()
   const [detail, setDetail]   = useState(null)
   const [timeline, setTimeline] = useState([])
   const [checks, setChecks]   = useState([])
@@ -103,7 +104,7 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
             <Badge status={d.status} />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '250px 1fr', gap: 22 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '250px 1fr', gap: 22 }}>
             {/* Left Column */}
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.textSm, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
@@ -136,7 +137,7 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
               {/* Invoice Details */}
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: C.textSm, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Invoice Details</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: 8 }}>
                   <Field label="Invoice Amount" value={fmt(d.invoice_amount)} />
                   <Field label={`Advance @${Math.round((d.advance_rate || 0.97) * 100)}%`} value={fmt(d.advance_amount)} accent />
                   <Field label="Due Date" value={d.due_date ? new Date(d.due_date).toLocaleDateString() : '—'} />
@@ -200,7 +201,7 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
               {/* Ryder Tracking */}
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: C.textSm, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Ryder Tracking</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 8, marginBottom: 10 }}>
                   <Field label="Submitted"  value={d.ryder_submitted_at ? new Date(d.ryder_submitted_at).toLocaleDateString() : '—'} />
                   <Field label="Conf. #"    value={d.ryder_conf_number || '—'} mono />
                   <Field label="Days Out"   value={daysOut != null ? `${daysOut}d` : '—'} red={daysOut >= 60} />

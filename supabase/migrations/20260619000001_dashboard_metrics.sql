@@ -46,14 +46,22 @@ returns json language sql stable as $$
     'total_invoices_count',      (select count(*) from scoped),
     'total_invoices_value',      (select coalesce(sum(invoice_amount),0) from scoped),
 
-    'pending_count',             (select count(*) from scoped where status = 'Uploaded'),
-    'pending_value',             (select coalesce(sum(invoice_amount),0) from scoped where status = 'Uploaded'),
+    -- 'Eligible' folded in with 'Uploaded' — both are pre-request stages.
+    'pending_count',             (select count(*) from scoped where status in ('Uploaded','Eligible')),
+    'pending_value',             (select coalesce(sum(invoice_amount),0) from scoped where status in ('Uploaded','Eligible')),
 
     'awaiting_conf_count',       (select count(*) from scoped where status = 'Advance Confirmed'),
     'awaiting_conf_value',       (select coalesce(sum(invoice_amount),0) from scoped where status = 'Advance Confirmed'),
 
-    'open_payment_count',        (select count(*) from scoped where status in ('Payment Requested','Advance Agreed')),
-    'open_payment_value',        (select coalesce(sum(advance_amount),0) from scoped where status in ('Payment Requested','Advance Agreed')),
+    -- 'Ready for Payment' (legacy enum value) is folded in here so every
+    -- pre-payout invoice lands in this tile and nothing falls through.
+    'open_payment_count',        (select count(*) from scoped where status in ('Payment Requested','Advance Agreed','Ready for Payment')),
+    'open_payment_value',        (select coalesce(sum(advance_amount),0) from scoped where status in ('Payment Requested','Advance Agreed','Ready for Payment')),
+
+    -- Advance Paid but NOT yet submitted to Ryder — money is out the door
+    -- to RZR, waiting to be sent to Ryder. This was previously uncounted.
+    'advance_paid_count',        (select count(*) from scoped where status = 'Advance Paid'),
+    'advance_paid_value',        (select coalesce(sum(advance_amount),0) from scoped where status = 'Advance Paid'),
 
     'pending_ryder_count',       (select count(*) from scoped where status in ('Submitted to Ryder','Acknowledged','Resubmitted')),
     'pending_ryder_value',       (select coalesce(sum(advance_amount),0) from scoped where status in ('Submitted to Ryder','Acknowledged','Resubmitted')),

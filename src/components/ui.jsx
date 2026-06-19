@@ -9,17 +9,35 @@ import {
   RefreshCw, XCircle, Info, Menu, LogOut
 } from 'lucide-react';
 
-/* ─── Responsive helper ─────────────────────────────────────── */
-export const useIsMobile = (breakpoint = 760) => {
-  const [isMobile, setIsMobile] = useState(
-    typeof window !== 'undefined' ? window.innerWidth < breakpoint : false
-  );
+/* ─── Responsive helpers ────────────────────────────────────── */
+export const useViewportWidth = () => {
+  const [w, setW] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
   useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < breakpoint);
+    const onResize = () => setW(window.innerWidth);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, [breakpoint]);
-  return isMobile;
+  }, []);
+  return w;
+};
+
+export const useIsMobile = (breakpoint = 760) => useViewportWidth() < breakpoint;
+
+/**
+ * Responsive grid that collapses its column count on smaller screens.
+ * `cols` is the desktop column count; it drops to 2 on tablet (<900px)
+ * and 1 on phone (<560px). Pass `min` to keep a higher floor (e.g. charts
+ * stay at 1 on phone but 2 on tablet by default).
+ */
+export const Grid = ({ cols = 4, gap = 11, mobileCols, tabletCols, style, children }) => {
+  const w = useViewportWidth();
+  let n = cols;
+  if (w < 900) n = tabletCols ?? Math.min(cols, 2);
+  if (w < 560) n = mobileCols ?? 1;
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${n}, 1fr)`, gap, ...style }}>
+      {children}
+    </div>
+  );
 };
 
 /* ─── Typography helpers ───────────────────────────────────── */
@@ -117,16 +135,18 @@ export const TD = ({ children, style, mono, accent, muted }) => (
 );
 
 /* ─── Modal ─────────────────────────────────────────────────── */
-export const Modal = ({ children, onClose, width = 520, title, subtitle, accentHeader }) => (
+export const Modal = ({ children, onClose, width = 520, title, subtitle, accentHeader }) => {
+  const isMobile = useIsMobile();
+  return (
   <div style={{
     position: 'fixed', inset: 0, background: 'rgba(7,36,24,0.46)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    zIndex: 1000, padding: 30,
+    display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'center',
+    zIndex: 1000, padding: isMobile ? '12px 8px' : 30, overflowY: 'auto',
   }} onClick={e => e.target === e.currentTarget && onClose()}>
     <div style={{
       background: '#fff', borderRadius: 16, width, maxWidth: '100%',
       boxShadow: '0 24px 70px rgba(0,0,0,0.34)', border: `1px solid ${C.border}`,
-      maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      maxHeight: isMobile ? 'none' : '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
       {title && (
         <div style={{
@@ -147,7 +167,8 @@ export const Modal = ({ children, onClose, width = 520, title, subtitle, accentH
       <div style={{ overflowY: 'auto', flex: 1 }}>{children}</div>
     </div>
   </div>
-);
+  );
+};
 
 export const ModalBody = ({ children, style }) => (
   <div style={{ padding: '20px 24px', ...style }}>{children}</div>
@@ -280,9 +301,12 @@ export const Topbar = ({ title, subtitle, children }) => {
   );
 };
 
-export const PageContent = ({ children, style }) => (
-  <div style={{ flex: 1, overflowY: 'auto', padding: '22px 26px', ...style }}>{children}</div>
-);
+export const PageContent = ({ children, style }) => {
+  const isMobile = useIsMobile();
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '14px 12px' : '22px 26px', ...style }}>{children}</div>
+  );
+};
 
 /* ─── Kebab Menu ────────────────────────────────────────────── */
 export const KebabMenu = ({ items }) => {
@@ -408,7 +432,7 @@ export const FilterChip = ({ label, options, value, onChange }) => {
 
 /* ─── View Tabs ─────────────────────────────────────────────── */
 export const Tabs = ({ tabs, active, onChange }) => (
-  <div style={{ display: 'flex', gap: 6 }}>
+  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
     {tabs.map(t => (
       <button key={t.key} onClick={() => onChange(t.key)} style={{
         padding: '6px 14px', borderRadius: 7, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
