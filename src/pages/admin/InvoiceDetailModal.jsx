@@ -206,6 +206,12 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
                   <Field label="Conf. #"    value={d.ryder_conf_number || '—'} mono />
                   <Field label="Days Out"   value={daysOut != null ? `${daysOut}d` : '—'} red={daysOut >= 60} />
                   <Field label="Due Date"   value={d.due_date ? new Date(d.due_date).toLocaleDateString() : '—'} />
+                  <Field label="Resent to Ryder"
+                    value={`${d.resubmit_count ?? 0}×`}
+                    red={(d.resubmit_count ?? 0) >= 3}
+                    accent={(d.resubmit_count ?? 0) > 0} />
+                  <Field label="Last Resent"
+                    value={d.last_resubmitted_at ? new Date(d.last_resubmitted_at).toLocaleDateString() : '—'} />
                 </div>
 
                 {daysOut >= 60 && (

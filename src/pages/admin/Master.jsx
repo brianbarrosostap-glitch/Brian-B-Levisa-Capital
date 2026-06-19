@@ -146,7 +146,7 @@ export default function Master() {
     if (!silent) setLoading(true)
     const { data, error } = await supabase
       .from('invoices')
-      .select(`id, invoice_number, po_number, unit_number, invoice_date, invoice_amount, advance_amount, status, batch_id, client:clients(name)`)
+      .select(`id, invoice_number, po_number, unit_number, invoice_date, invoice_amount, advance_amount, status, batch_id, resubmit_count, client:clients(name)`)
       .order('invoice_date', { ascending: false })
     if (error) console.error('Master fetchInvoices failed:', error)
     // Only overwrite when we actually got rows back — never wipe the table
@@ -262,14 +262,20 @@ export default function Master() {
                 border: `1px solid ${C.border}`, borderRadius: 10, padding: '12px 14px',
                 background: ROW_BG[inv.status] || '#fff', cursor: 'pointer',
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 6 }}>
                   <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14 }}>{inv.invoice_number}</span>
-                  <Badge status={inv.status} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {inv.resubmit_count > 0 && (
+                      <span style={{ background: inv.resubmit_count >= 3 ? C.redLt : '#fef3c7', color: inv.resubmit_count >= 3 ? C.red : '#92400e', borderRadius: 9999, fontSize: 10, fontWeight: 700, padding: '1px 7px' }}>↻ {inv.resubmit_count}×</span>
+                    )}
+                    <Badge status={inv.status} />
+                  </div>
                 </div>
                 {[
                   ['Invoice Date', new Date(inv.invoice_date).toLocaleDateString()],
                   ['PO #', inv.po_number || '—'],
                   ['Unit #', inv.unit_number || '—'],
+                  ['Resent to Ryder', `${inv.resubmit_count ?? 0}×`],
                   ['Invoice Amount', fmt(inv.invoice_amount)],
                   ['Advance @97%', fmt(inv.advance_amount)],
                 ].map(([k, v]) => (
@@ -326,7 +332,17 @@ export default function Master() {
                   <TD muted>{inv.unit_number}</TD>
                   <TD style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(inv.invoice_amount)}</TD>
                   <TD accent style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(inv.advance_amount)}</TD>
-                  <TD><Badge status={inv.status} /></TD>
+                  <TD>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Badge status={inv.status} />
+                      {inv.resubmit_count > 0 && (
+                        <span title={`Re-sent to Ryder ${inv.resubmit_count} time(s)`} style={{
+                          background: inv.resubmit_count >= 3 ? C.redLt : '#fef3c7', color: inv.resubmit_count >= 3 ? C.red : '#92400e',
+                          borderRadius: 9999, fontSize: 10, fontWeight: 700, padding: '1px 7px', whiteSpace: 'nowrap',
+                        }}>↻ {inv.resubmit_count}×</span>
+                      )}
+                    </div>
+                  </TD>
                   <TD style={{ padding: '6px 8px' }} onClick={e => e.stopPropagation()}>
                     <KebabMenu items={[
                       { label: 'View Detail', onClick: () => setDetailModal(inv) },

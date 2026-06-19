@@ -43,6 +43,15 @@ input, textarea, select {
   font-family: inherit;
 }
 
+/* iOS auto-zooms when focusing an input whose font-size is < 16px. Force
+   16px on touch/small screens so the page never zooms in on focus (login,
+   search, date pickers). Pinch-zoom is still allowed. */
+@media (max-width: 768px) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

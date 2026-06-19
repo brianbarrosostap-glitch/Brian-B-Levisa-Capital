@@ -84,15 +84,22 @@ function DateRangeBar({ preset, custom, applyPreset, applyCustom }) {
 
       {!isMobile && <div style={{ width: 1, height: 22, background: C.border, margin: '0 2px' }} />}
 
-      {/* Custom range — its own full-width row on mobile */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: isMobile ? '100%' : undefined }}>
-        <input type="date" value={custom.start} max={custom.end || undefined}
-          onChange={e => applyCustom(e.target.value, custom.end || e.target.value)}
-          style={inputStyle(preset === 'custom')} />
-        <span style={{ fontSize: 13, color: C.textMut, flexShrink: 0 }}>→</span>
-        <input type="date" value={custom.end} min={custom.start || undefined}
-          onChange={e => applyCustom(custom.start || e.target.value, e.target.value)}
-          style={inputStyle(preset === 'custom')} />
+      {/* Custom range — labelled so the empty native date boxes are clear.
+          (iOS date inputs don't render placeholder text, hence the labels.) */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, width: isMobile ? '100%' : undefined }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: isMobile ? 1 : undefined, minWidth: 0 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.04em' }}>From</span>
+          <input type="date" value={custom.start} max={custom.end || undefined}
+            onChange={e => applyCustom(e.target.value, custom.end || e.target.value)}
+            style={inputStyle(preset === 'custom')} />
+        </label>
+        <span style={{ fontSize: 13, color: C.textMut, flexShrink: 0, paddingBottom: 8 }}>→</span>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: isMobile ? 1 : undefined, minWidth: 0 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.04em' }}>To</span>
+          <input type="date" value={custom.end} min={custom.start || undefined}
+            onChange={e => applyCustom(custom.start || e.target.value, e.target.value)}
+            style={inputStyle(preset === 'custom')} />
+        </label>
         {preset === 'custom' && (
           <button onClick={() => applyPreset('all')} title="Clear custom range" style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center', height: 36, boxSizing: 'border-box',
