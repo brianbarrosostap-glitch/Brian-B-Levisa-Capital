@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { AlertTriangle, AlertCircle, Check } from 'lucide-react'
 import { C } from '../../tokens'
-import { Card, Btn, Modal, ModalBody, ModalFooter, Field, Grid } from '../../components/ui'
+import { Card, Btn, Modal, ModalBody, ModalFooter, Field, Grid, useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
 import { useDateRange, PRESETS } from '../../hooks/useDateRange'
 import { VolumeChart, PipelineChart, ProfitTrendChart, OverdueAgingChart } from './DashboardCharts'
@@ -47,48 +47,58 @@ const SectionHeader = ({ title, hint }) => (
   </div>
 )
 
-/* ── Sticky global date-range filter ── */
+/* ── Global date-range filter (responsive) ── */
 function DateRangeBar({ preset, custom, applyPreset, applyCustom }) {
+  const isMobile = useIsMobile()
   const inputStyle = (active) => ({
-    padding: '6px 9px', borderRadius: 7, fontSize: 12, height: 30, boxSizing: 'border-box',
+    padding: '8px 10px', borderRadius: 7, fontSize: 13, height: 36, boxSizing: 'border-box',
     border: `1px solid ${active ? C.primary : C.border}`, fontFamily: 'inherit', color: C.text, background: '#fff',
+    flex: isMobile ? 1 : undefined, minWidth: 0,
   })
   return (
     <div style={{
       background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10,
       boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-      padding: '10px 14px', marginBottom: 16,
-      display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+      padding: isMobile ? '12px' : '10px 14px', marginBottom: 16,
+      display: 'flex', flexDirection: isMobile ? 'column' : 'row',
+      alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? 10 : 8, flexWrap: 'wrap',
     }}>
-      <span style={{ fontSize: 11, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.04em', marginRight: 4 }}>Date Range</span>
+      <span style={{ fontSize: 11, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Date Range</span>
+
+      {/* Presets — wrap into a tidy grid on mobile */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
         {PRESETS.map(p => {
           const on = preset === p.key
           return (
             <button key={p.key} onClick={() => applyPreset(p.key)} style={{
-              padding: '6px 12px', height: 30, boxSizing: 'border-box', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              padding: isMobile ? '8px 12px' : '6px 12px', height: 36, boxSizing: 'border-box',
+              borderRadius: 7, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
               border: `1px solid ${on ? C.primary : C.border}`,
               background: on ? C.primary : '#fff', color: on ? '#fff' : C.textSm,
               fontFamily: 'inherit', whiteSpace: 'nowrap',
+              flex: isMobile ? '1 1 auto' : undefined,
             }}>{p.label}</button>
           )
         })}
       </div>
-      <div style={{ width: 1, height: 22, background: C.border, margin: '0 2px' }} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+
+      {!isMobile && <div style={{ width: 1, height: 22, background: C.border, margin: '0 2px' }} />}
+
+      {/* Custom range — its own full-width row on mobile */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: isMobile ? '100%' : undefined }}>
         <input type="date" value={custom.start} max={custom.end || undefined}
           onChange={e => applyCustom(e.target.value, custom.end || e.target.value)}
           style={inputStyle(preset === 'custom')} />
-        <span style={{ fontSize: 12, color: C.textMut }}>→</span>
+        <span style={{ fontSize: 13, color: C.textMut, flexShrink: 0 }}>→</span>
         <input type="date" value={custom.end} min={custom.start || undefined}
           onChange={e => applyCustom(custom.start || e.target.value, e.target.value)}
           style={inputStyle(preset === 'custom')} />
         {preset === 'custom' && (
           <button onClick={() => applyPreset('all')} title="Clear custom range" style={{
-            display: 'inline-flex', alignItems: 'center', gap: 4, height: 30, boxSizing: 'border-box',
-            padding: '0 10px', borderRadius: 7, border: `1px solid ${C.border}`, background: '#fff',
-            color: C.red, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-          }}>✕ Clear</button>
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', height: 36, boxSizing: 'border-box',
+            padding: '0 12px', borderRadius: 7, border: `1px solid ${C.border}`, background: '#fff',
+            color: C.red, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, whiteSpace: 'nowrap',
+          }}>✕</button>
         )}
       </div>
     </div>
@@ -277,15 +287,34 @@ export default function Dashboard() {
   }
 
   const fetchAlerts = async () => {
-    const { data } = await supabase
-      .from('needs_attention')
-      .select(`
+    // Primary query includes cheque_id (added in migration 20260617000005).
+    // If that migration hasn't been run yet the column is missing and
+    // PostgREST returns 400 — fall back to a query without it so the
+    // dashboard still works instead of silently breaking.
+    const FULL = `
         id, type, title, detail, action_label,
         ryder_conf_number, ryder_amount, check_number, resolved, cheque_id,
-        invoice:invoices(id, invoice_number, unit_number, status)
-      `)
+        invoice:invoices(id, invoice_number, unit_number, status)`
+    const FALLBACK = `
+        id, type, title, detail, action_label,
+        ryder_conf_number, ryder_amount, check_number, resolved,
+        invoice:invoices(id, invoice_number, unit_number, status)`
+
+    let { data, error } = await supabase
+      .from('needs_attention')
+      .select(FULL)
       .eq('resolved', false)
       .order('created_at', { ascending: true })
+
+    if (error) {
+      console.error('needs_attention (full) failed, retrying without cheque_id:', error)
+      ;({ data, error } = await supabase
+        .from('needs_attention')
+        .select(FALLBACK)
+        .eq('resolved', false)
+        .order('created_at', { ascending: true }))
+      if (error) { console.error('needs_attention fallback also failed:', error); return }
+    }
 
     if (data) {
       setAlerts(data.map(a => ({

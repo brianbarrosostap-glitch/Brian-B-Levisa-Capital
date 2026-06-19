@@ -15,12 +15,20 @@ body {
 
 #root {
   width: 100%;
+  /* 100dvh handles the iOS dynamic toolbar; fallback to 100vh. */
   height: 100vh;
+  height: 100dvh;
   margin: 0;
   padding: 0;
   text-align: left;
   border: none;
   display: block;
+}
+
+/* Respect the iPhone notch / status bar in installed (standalone) PWA mode. */
+@supports (padding: env(safe-area-inset-top)) {
+  .safe-top    { padding-top: env(safe-area-inset-top); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 }
 
 * {

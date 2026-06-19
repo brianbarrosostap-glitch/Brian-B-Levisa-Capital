@@ -282,7 +282,10 @@ export const Shell = ({ children, nav, user, onSignOut }) => {
 
   const sidebar = (
     <div style={{
-      width: 224, background: C.sidebar, padding: '22px 10px',
+      width: 224, background: C.sidebar,
+      // Safe-area insets so the sidebar clears the iPhone notch (top) and
+      // home indicator (bottom) when installed as a PWA.
+      padding: 'calc(env(safe-area-inset-top, 0px) + 22px) 10px calc(env(safe-area-inset-bottom, 0px) + 16px)',
       display: 'flex', flexDirection: 'column', flexShrink: 0,
       height: '100%',
       ...(isMobile ? { position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 60, boxShadow: '2px 0 24px rgba(0,0,0,0.35)' } : {}),
@@ -339,14 +342,17 @@ export const Shell = ({ children, nav, user, onSignOut }) => {
       )}
 
       {/* Main */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0, position: 'relative' }}>
         {isMobile && (
           <button onClick={() => setNavOpen(true)} aria-label="Open menu" style={{
-            position: 'absolute', top: 11, left: 12, zIndex: 40, width: 32, height: 32,
-            borderRadius: 7, border: `1px solid ${C.border}`, background: '#fff',
+            // Sits inside the Topbar; the safe-area inset pushes it below the
+            // iPhone status bar so it never overlaps the clock/notch.
+            position: 'absolute', left: 10, zIndex: 40, width: 34, height: 34,
+            top: 'calc(env(safe-area-inset-top, 0px) + 8px)',
+            borderRadius: 8, border: `1px solid ${C.border}`, background: '#fff',
             display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
           }}>
-            <Menu size={17} color={C.textSm} />
+            <Menu size={18} color={C.textSm} />
           </button>
         )}
         {children}
@@ -358,17 +364,19 @@ export const Shell = ({ children, nav, user, onSignOut }) => {
 export const Topbar = ({ title, subtitle, children }) => {
   const isMobile = useIsMobile();
   return (
-    <div style={{
-      minHeight: 52, background: '#fff', borderBottom: `1px solid ${C.border}`,
-      padding: isMobile ? '0 14px 0 52px' : '0 26px',
+    <div className="safe-top" style={{
+      background: '#fff', borderBottom: `1px solid ${C.border}`,
+      // Extra left padding on mobile leaves room for the hamburger button.
+      padding: isMobile ? '8px 12px 8px 50px' : '0 26px',
+      minHeight: isMobile ? undefined : 52,
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      gap: 10, flexShrink: 0,
+      gap: 8, flexShrink: 0,
     }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
-        <span style={{ fontSize: 15, fontWeight: 700, color: C.text, whiteSpace: 'nowrap' }}>{title}</span>
+        <span style={{ fontSize: 15, fontWeight: 700, color: C.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
         {subtitle && !isMobile && <span style={{ fontSize: 12.5, color: C.textMut }}>— {subtitle}</span>}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>{children}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>{children}</div>
     </div>
   );
 };
