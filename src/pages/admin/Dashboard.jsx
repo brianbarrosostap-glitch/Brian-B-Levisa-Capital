@@ -4,7 +4,7 @@ import { C } from '../../tokens'
 import { Card, Btn, Modal, ModalBody, ModalFooter, Field, Grid, useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
 import { useDateRange, PRESETS } from '../../hooks/useDateRange'
-import { VolumeChart, PipelineChart, ProfitTrendChart, OverdueAgingChart } from './DashboardCharts'
+import { VolumeChart, PipelineChart } from './DashboardCharts'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const num = n => Number(n || 0).toLocaleString('en-US')
@@ -240,8 +240,6 @@ export default function Dashboard() {
 
   const [metrics, setMetrics] = useState(null)
   const [volume, setVolume]   = useState([])
-  const [profit, setProfit]   = useState([])
-  const [overdue, setOverdue] = useState([])
   const [metricsLoading, setMetricsLoading] = useState(true)
 
   const [alerts, setAlerts]     = useState([])
@@ -249,54 +247,26 @@ export default function Dashboard() {
   const [matchModal, setMatchModal] = useState(null)
   const [chequeModal, setChequeModal] = useState(null)
 
-  // All metrics + charts re-fetch whenever the shared date range changes,
+  // Metrics + charts re-fetch whenever the shared date range changes,
   // so nothing can drift out of sync.
   useEffect(() => {
     let cancelled = false
     setMetricsLoading(true)
     Promise.all([
-      supabase.rpc('dashboard_metrics',      { p_start: range.start, p_end: range.end }),
-      supabase.rpc('dashboard_volume',       { p_start: range.start, p_end: range.end, p_grain: grain }),
-      supabase.rpc('dashboard_profit_trend', { p_start: range.start, p_end: range.end, p_grain: grain }),
-      fetchOverdueBuckets(range.start, range.end),
-    ]).then(([mRes, vRes, pRes, buckets]) => {
+      supabase.rpc('dashboard_metrics', { p_start: range.start, p_end: range.end }),
+      supabase.rpc('dashboard_volume',  { p_start: range.start, p_end: range.end, p_grain: grain }),
+    ]).then(([mRes, vRes]) => {
       if (cancelled) return
       if (mRes.error) console.error('dashboard_metrics:', mRes.error)
       if (vRes.error) console.error('dashboard_volume:', vRes.error)
-      if (pRes.error) console.error('dashboard_profit_trend:', pRes.error)
       setMetrics(mRes.data || null)
       setVolume(vRes.data || [])
-      setProfit(pRes.data || [])
-      setOverdue(buckets)
       setMetricsLoading(false)
     })
     return () => { cancelled = true }
   }, [range.start, range.end, grain])
 
   useEffect(() => { fetchAlerts() }, [])
-
-  // Overdue aging buckets — computed live from invoices still out with Ryder.
-  const fetchOverdueBuckets = async (start, end) => {
-    const { data } = await supabase
-      .from('invoices')
-      .select('advance_amount, ryder_submitted_at, status, invoice_date')
-      .in('status', ['Submitted to Ryder', 'Acknowledged', 'Resubmitted'])
-      .not('ryder_submitted_at', 'is', null)
-      .gte('invoice_date', start)
-      .lte('invoice_date', end)
-    const now = Date.now()
-    const acc = { '0-30': 0, '31-60': 0, '60+': 0 }
-    for (const r of data || []) {
-      const days = Math.floor((now - new Date(r.ryder_submitted_at)) / 86400000)
-      const b = days <= 30 ? '0-30' : days <= 60 ? '31-60' : '60+'
-      acc[b] += Number(r.advance_amount || 0)
-    }
-    return [
-      { bucket: '0-30',  label: '0–30 days',  value: acc['0-30'] },
-      { bucket: '31-60', label: '31–60 days', value: acc['31-60'] },
-      { bucket: '60+',   label: '60+ days',   value: acc['60+'] },
-    ]
-  }
 
   const fetchAlerts = async () => {
     // Primary query includes cheque_id (added in migration 20260617000005).
@@ -415,8 +385,6 @@ export default function Dashboard() {
         <Grid cols={2} tabletCols={1} mobileCols={1} gap={14}>
           <VolumeChart data={volume} />
           <PipelineChart metrics={m} />
-          <ProfitTrendChart data={profit} rate={Number(m.factoring_rate) || 0.03} />
-          <OverdueAgingChart buckets={overdue} />
         </Grid>
       )}
 

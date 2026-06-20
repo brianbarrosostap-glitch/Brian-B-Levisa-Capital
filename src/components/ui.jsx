@@ -541,7 +541,9 @@ export const Tabs = ({ tabs, active, onChange }) => (
 );
 
 /* ─── Timeline Step ─────────────────────────────────────────── */
-export const TimelineStep = ({ label, date, done, current, last }) => (
+// `extra` (optional string[]) renders extra dated lines under the step —
+// used to list each Ryder submission (1st → last) below that step.
+export const TimelineStep = ({ label, date, done, current, last, extra }) => (
   <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <div style={{
@@ -553,11 +555,14 @@ export const TimelineStep = ({ label, date, done, current, last }) => (
       }}>
         {done && <Check size={9} color="#fff" strokeWidth={3} />}
       </div>
-      {!last && <div style={{ width: 2, height: 28, background: done ? C.primary : C.border, marginTop: 2 }} />}
+      {!last && <div style={{ width: 2, height: extra && extra.length ? 28 + extra.length * 16 : 28, background: done ? C.primary : C.border, marginTop: 2 }} />}
     </div>
     <div style={{ paddingBottom: last ? 0 : 12 }}>
       <div style={{ fontSize: 12.5, fontWeight: 600, color: done || current ? C.text : C.textMut }}>{label}</div>
       {date && <div style={{ fontSize: 11, color: C.textMut, marginTop: 1 }}>{date}</div>}
+      {extra && extra.map((line, i) => (
+        <div key={i} style={{ fontSize: 11, color: C.textSm, marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>{line}</div>
+      ))}
     </div>
   </div>
 );

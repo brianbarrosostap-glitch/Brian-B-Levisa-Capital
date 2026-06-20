@@ -178,10 +178,10 @@ export default function Master() {
   }
 
   const active    = invoices.filter(i => !['Void','Cancelled'].includes(i.status))
-  const voided    = invoices.filter(i => i.status === 'Void')
-  const cancelled = invoices.filter(i => i.status === 'Cancelled')
+  // Void + Cancelled are merged into one "Cancelled" bucket (both are dead invoices).
+  const cancelled = invoices.filter(i => ['Void','Cancelled'].includes(i.status))
 
-  const list = (tab === 'active' ? active : tab === 'void' ? voided : cancelled).filter(i => {
+  const list = (tab === 'active' ? active : cancelled).filter(i => {
     const q = search.toLowerCase()
     const matchQ = !q || i.invoice_number?.toLowerCase().includes(q) || i.unit_number?.includes(q) || i.po_number?.toLowerCase().includes(q)
     const matchS = !statusFilter || i.status === statusFilter
@@ -194,9 +194,9 @@ export default function Master() {
   const listTotalAdvance = list.reduce((s, i) => s + Number(i.advance_amount), 0)
   const statuses     = [...new Set(invoices.map(i => i.status))]
 
-  const handleMarkStatus = async (inv, action) => {
+  const handleMarkStatus = async (inv, action, status) => {
     try {
-      await callFunction('mark-invoice-status', { invoice_id: inv.id, action })
+      await callFunction('mark-invoice-status', { invoice_id: inv.id, action, status })
       fetchInvoices()
     } catch (e) { console.error(e) }
   }
@@ -244,7 +244,6 @@ export default function Master() {
         <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}` }}>
           <Tabs active={tab} onChange={setTab} tabs={[
             { key: 'active',    label: 'Active',    count: active.length },
-            { key: 'void',      label: 'Void',      count: voided.length },
             { key: 'cancelled', label: 'Cancelled', count: cancelled.length },
           ]} />
         </div>
@@ -291,7 +290,7 @@ export default function Master() {
                     { label: 'Mark Ryder Paid',   onClick: () => handleMarkStatus(inv, 'mark_ryder_paid') },
                     { label: 'Mark Paid (override)', onClick: () => handleMarkStatus(inv, 'mark_paid_override') },
                     { label: 'Resubmit',  onClick: () => handleMarkStatus(inv, 'resubmit') },
-                    { label: 'Void Invoice', danger: true, onClick: () => handleMarkStatus(inv, 'set_void') },
+                    { label: 'Cancel Invoice', danger: true, onClick: () => handleMarkStatus(inv, 'set_status', 'Cancelled') },
                   ]} />
                 </div>
               </div>
@@ -350,7 +349,7 @@ export default function Master() {
                       { label: 'Mark Ryder Paid',   onClick: () => handleMarkStatus(inv, 'mark_ryder_paid') },
                       { label: 'Mark Paid (override)', onClick: () => handleMarkStatus(inv, 'mark_paid_override') },
                       { label: 'Resubmit',  onClick: () => handleMarkStatus(inv, 'resubmit') },
-                      { label: 'Void Invoice', danger: true, onClick: () => handleMarkStatus(inv, 'set_void') },
+                      { label: 'Cancel Invoice', danger: true, onClick: () => handleMarkStatus(inv, 'set_status', 'Cancelled') },
                     ]} />
                   </TD>
                 </tr>

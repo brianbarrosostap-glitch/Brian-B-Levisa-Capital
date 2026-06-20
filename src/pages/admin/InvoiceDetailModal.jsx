@@ -1,10 +1,18 @@
 import React, { useState, useEffect } from 'react'
 import { AlertTriangle, ExternalLink } from 'lucide-react'
 import { C, adminStatus } from '../../tokens'
-import { Modal, ModalBody, ModalFooter, Btn, Badge, Field, TimelineStep, useIsMobile } from '../../components/ui'
+import { Modal, ModalBody, ModalFooter, Badge, Field, TimelineStep, useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+// dd/mm/yyyy HH:MM (24-hour). Used for every timeline / submission entry.
+const dt = (v) => {
+  if (!v) return ''
+  const d = new Date(v)
+  const p = (n) => String(n).padStart(2, '0')
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
 
 const DriveLink = ({ url, label = 'View' }) => (
   <a
@@ -78,9 +86,10 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
     setLoading(false)
   }
 
-  const handleAction = async (action) => {
+  // Admin manual status change (only Paid / Cancelled are exposed).
+  const handleAction = async (status) => {
     try {
-      await callFunction('mark-invoice-status', { invoice_id: inv.id, action })
+      await callFunction('mark-invoice-status', { invoice_id: inv.id, action: 'set_status', status })
       fetchDetail()
       onRefresh?.()
     } catch (e) { console.error(e) }
@@ -102,6 +111,11 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
     { status: 'Acknowledged',       label: 'Acknowledged by Ryder' },
     { status: 'Paid',               label: 'Paid — Cheque Received' },
   ]
+  // If the invoice is currently Cancelled/Void, the lifecycle timeline no
+  // longer applies — old history rows (e.g. a prior 'Paid') must NOT show as
+  // the live state. We render a single "Cancelled" entry instead.
+  const isTerminated = d.status === 'Cancelled' || d.status === 'Void'
+
   const doneSet = new Set(timeline.map(t => t.status))
   const currentIdx = STEPS.findIndex(s => !doneSet.has(s.status))
 
@@ -109,9 +123,14 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
     const hit = timeline.find(t => t.status === step.status)
     return {
       label: step.label,
-      date: hit ? new Date(hit.occurred_at).toLocaleDateString() : '',
+      date: hit ? dt(hit.occurred_at) : '',
       done: !!hit,
-      current: i === currentIdx,
+      current: !isTerminated && i === currentIdx,
+      // Under the "Submitted to Ryder" step, list each (re)submission's
+      // date+time (1st → last), pulled from the submission audit rows.
+      extra: step.status === 'Submitted to Ryder' && submissions.length > 0
+        ? submissions.map((s, n) => `${n === 0 ? '1st' : `#${n + 1}`} — ${dt(s.sent_at)}`)
+        : null,
     }
   })
 
@@ -139,9 +158,18 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
               <div style={{ fontSize: 11, fontWeight: 700, color: C.textSm, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
                 Status Timeline
               </div>
-              {tlSteps.map((step, i) => (
-                <TimelineStep key={i} label={step.label} date={step.date} done={step.done} current={step.current} last={i === tlSteps.length - 1} />
-              ))}
+              {isTerminated && (
+                <div style={{ marginBottom: 12, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 9, padding: '10px 12px' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.red }}>This invoice was {d.status === 'Void' ? 'voided' : 'cancelled'}</div>
+                  {d.voided_at && <div style={{ fontSize: 11.5, color: '#991b1b', marginTop: 2 }}>{dt(d.voided_at)}</div>}
+                  <div style={{ fontSize: 11.5, color: C.textMut, marginTop: 4 }}>The steps below show the history up to cancellation.</div>
+                </div>
+              )}
+              <div style={{ opacity: isTerminated ? 0.55 : 1 }}>
+                {tlSteps.map((step, i) => (
+                  <TimelineStep key={i} label={step.label} date={step.date} done={step.done} current={step.current} last={i === tlSteps.length - 1} extra={step.extra} />
+                ))}
+              </div>
 
               <div style={{ marginTop: 18, background: '#f8fafc', border: `1px solid ${C.border}`, borderRadius: 10, padding: '12px 14px' }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: C.textSm, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Customer</div>
@@ -231,16 +259,10 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: C.textSm, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Ryder Tracking</div>
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 8, marginBottom: 10 }}>
-                  <Field label="Submitted"  value={d.ryder_submitted_at ? new Date(d.ryder_submitted_at).toLocaleDateString() : '—'} />
+                  <Field label="Submitted"  value={d.ryder_submitted_at ? dt(d.ryder_submitted_at) : '—'} />
                   <Field label="Conf. #"    value={d.ryder_conf_number || '—'} mono />
                   <Field label="Days Out"   value={daysOut != null ? `${daysOut}d` : '—'} red={daysOut >= 60} />
-                  <Field label="Due Date"   value={d.due_date ? new Date(d.due_date).toLocaleDateString() : '—'} />
-                  <Field label="Resent to Ryder"
-                    value={`${d.resubmit_count ?? 0}×`}
-                    red={(d.resubmit_count ?? 0) >= 3}
-                    accent={(d.resubmit_count ?? 0) > 0} />
-                  <Field label="Last Resent"
-                    value={d.last_resubmitted_at ? new Date(d.last_resubmitted_at).toLocaleDateString() : '—'} />
+                  <Field label="Due Date"   value={d.due_date ? dt(d.due_date) : '—'} />
                 </div>
 
                 {daysOut >= 60 && (
@@ -251,53 +273,8 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
                   </div>
                 )}
 
-                {/* Dated history of each time we (re)sent the invoice to Ryder.
-                    Primary source = per-send audit_logs rows (one per send).
-                    Fallback = the resubmit_count + last_resubmitted_at columns
-                    that n8n updates, so we always show at least the count + last date. */}
-                {submissions.length === 0 && (d.resubmit_count ?? 0) > 0 && (
-                  <div style={{ marginTop: 12, border: `1px solid ${C.border}`, borderRadius: 9, padding: '10px 12px', background: '#fffbeb' }}>
-                    <div style={{ fontSize: 10.5, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Ryder Submission Log</div>
-                    <div style={{ fontSize: 12.5, color: C.text, fontWeight: 600 }}>
-                      Submitted to Ryder {d.resubmit_count}× {d.resubmit_count > 1 ? '(incl. resends)' : ''}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: C.textMut, marginTop: 2 }}>
-                      Last sent: {d.last_resubmitted_at ? new Date(d.last_resubmitted_at).toLocaleString() : '—'}
-                    </div>
-                  </div>
-                )}
-
-                {submissions.length > 0 && (
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ fontSize: 10.5, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
-                      Ryder Submission Log ({submissions.length})
-                    </div>
-                    <div style={{ border: `1px solid ${C.border}`, borderRadius: 9, overflow: 'hidden' }}>
-                      {submissions.map((s, i) => (
-                        <div key={i} style={{
-                          display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
-                          borderTop: i > 0 ? `1px solid ${C.border}` : undefined,
-                          background: s.attempt > 1 ? '#fffbeb' : '#fff',
-                        }}>
-                          <span style={{
-                            flexShrink: 0, width: 22, height: 22, borderRadius: '50%',
-                            background: s.attempt > 1 ? '#fef3c7' : C.primLt, color: s.attempt > 1 ? '#92400e' : C.primary,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800,
-                          }}>{s.attempt}</span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>
-                              {s.attempt === 1 ? 'First submission' : `Resubmission #${s.attempt - 1}`}
-                            </div>
-                            <div style={{ fontSize: 11, color: C.textMut }}>{s.note || ''}</div>
-                          </div>
-                          <span style={{ fontSize: 12, color: C.textSm, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                            {s.sent_at ? new Date(s.sent_at).toLocaleDateString() + ' ' + new Date(s.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                {/* The per-submission dated history (1st → last) is now shown
+                    inline under the "Invoice Submitted to Ryder" timeline step. */}
               </div>
 
               {/* Confirmations (email-driven, written by n8n) */}
@@ -306,12 +283,12 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
                   <Field
                     label="Customer (RZR) Confirmed"
-                    value={d.customer_confirmed_at ? new Date(d.customer_confirmed_at).toLocaleString() : 'Awaiting'}
+                    value={d.customer_confirmed_at ? dt(d.customer_confirmed_at) : 'Awaiting'}
                     accent={!!d.customer_confirmed_at}
                   />
                   <Field
                     label="Ryder Confirmed"
-                    value={d.ryder_confirmed_at ? new Date(d.ryder_confirmed_at).toLocaleString() : 'Awaiting'}
+                    value={d.ryder_confirmed_at ? dt(d.ryder_confirmed_at) : 'Awaiting'}
                     accent={!!d.ryder_confirmed_at}
                   />
                 </div>
@@ -321,13 +298,21 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
         </ModalBody>
       )}
       <ModalFooter>
-        {/* Primary owner action: moves ONLY to 'Advance Paid' (no jump to Paid). */}
-        <Btn size="sm" onClick={() => handleAction('mark_advance_paid')}>Mark Advance Paid</Btn>
-        <Btn variant="outline" size="sm" onClick={() => handleAction('resubmit')}>Resubmit</Btn>
-        <Btn variant="subtle"  size="sm" onClick={() => handleAction('mark_ryder_paid')}>Mark Ryder Paid</Btn>
-        <div style={{ flex: 1 }} />
-        <Btn variant="ghost" size="sm" style={{ color: C.red }} onClick={() => handleAction('set_void')}>Set to Void</Btn>
-        <Btn variant="secondary" size="sm" onClick={() => handleAction('mark_paid_override')}>Mark Paid (override)</Btn>
+        {/* All other statuses are automated by n8n. The admin only manually
+            sets these two terminal states: Paid (cheque received) and Cancelled. */}
+        <span style={{ fontSize: 12, fontWeight: 600, color: C.textSm }}>Admin status:</span>
+        <select
+          value=""
+          onChange={(e) => { if (e.target.value) handleAction(e.target.value) }}
+          style={{
+            padding: '7px 11px', borderRadius: 8, border: `1px solid ${C.borderMd}`,
+            fontSize: 13, fontFamily: 'inherit', color: C.text, background: '#fff', cursor: 'pointer', minWidth: 220,
+          }}
+        >
+          <option value="" disabled>Update status…</option>
+          <option value="Paid">Mark as Paid — cheque received</option>
+          <option value="Cancelled">Cancel Invoice (void)</option>
+        </select>
       </ModalFooter>
     </Modal>
   )

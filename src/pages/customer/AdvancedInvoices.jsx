@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import { ExternalLink, Check } from 'lucide-react'
+import { ExternalLink } from 'lucide-react'
 import { C, customerStatus } from '../../tokens'
-import { Card, Badge, Btn, TH, TD, useIsMobile } from '../../components/ui'
-import { supabase, callFunction } from '../../lib/supabase'
+import { Card, Badge, TH, TD, useIsMobile } from '../../components/ui'
+import { supabase } from '../../lib/supabase'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -22,7 +22,6 @@ export default function AdvancedInvoices() {
   const isMobile = useIsMobile()
   const [invoices, setInvoices] = useState([])
   const [loading, setLoading]   = useState(true)
-  const [agreeing, setAgreeing] = useState(null)
 
   useEffect(() => { fetchInvoices() }, [])
 
@@ -42,16 +41,6 @@ export default function AdvancedInvoices() {
     setLoading(false)
   }
 
-  // Customer agrees to the 97% terms → Advance Confirmed → Advance Agreed.
-  const agree = async (inv) => {
-    setAgreeing(inv.id)
-    try {
-      await callFunction('agree-advance', { invoice_ids: [inv.id] })
-      await fetchInvoices()
-    } catch (e) { console.error(e) }
-    setAgreeing(null)
-  }
-
   return (
     <div>
       <Card noPad>
@@ -65,14 +54,12 @@ export default function AdvancedInvoices() {
             )}
             {invoices.map(inv => {
               const approved = APPROVED.includes(inv.status)
-              const canAgree = inv.status === 'Advance Confirmed'
+              const pendingConf = inv.status === 'Advance Confirmed'
               return (
                 <div key={inv.id} style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: '12px 14px', background: '#fff' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14 }}>{inv.invoice_number}</span>
-                    {canAgree
-                      ? <Btn size="sm" onClick={() => agree(inv)} disabled={agreeing === inv.id}><Check size={12} /> {agreeing === inv.id ? 'Saving…' : 'Agree to 97%'}</Btn>
-                      : <CustomerBadge status={inv.status} />}
+                    <CustomerBadge status={inv.status} />
                   </div>
                   {[
                     ['PO #', inv.po_number || '—'],
@@ -85,6 +72,11 @@ export default function AdvancedInvoices() {
                       <span style={{ fontVariantNumeric: 'tabular-nums', color: k === 'Advance' && approved ? C.primary : C.text, fontWeight: k === 'Advance' && approved ? 700 : 400 }}>{v}</span>
                     </div>
                   ))}
+                  {pendingConf && (
+                    <div style={{ marginTop: 8, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 10px', fontSize: 12, color: '#92400e' }}>
+                      <strong>Action needed:</strong> Check your email and confirm this invoice to proceed.
+                    </div>
+                  )}
                   <div style={{ marginTop: 8, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
                     <DriveBadge url={inv.drive_file_url} />
                   </div>
@@ -109,9 +101,10 @@ export default function AdvancedInvoices() {
               <tbody>
                 {invoices.map(inv => {
                   const approved   = APPROVED.includes(inv.status)
-                  const canAgree   = inv.status === 'Advance Confirmed'
+                  const pendingConf = inv.status === 'Advance Confirmed'   // awaiting customer email confirmation
                   return (
-                    <tr key={inv.id} style={{ borderBottom: `1px solid ${C.border}` }}
+                    <React.Fragment key={inv.id}>
+                    <tr style={{ borderBottom: pendingConf ? 'none' : `1px solid ${C.border}` }}
                       onMouseEnter={e => e.currentTarget.style.background = '#f5fdf8'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
@@ -122,17 +115,21 @@ export default function AdvancedInvoices() {
                         {approved ? fmt(inv.advance_amount) : <span style={{ color: C.textMut, fontWeight: 400 }}>—</span>}
                       </TD>
                       <TD muted style={{ fontSize: 12 }}>{inv.submitted_at ? new Date(inv.submitted_at).toLocaleDateString() : '—'}</TD>
-                      <TD style={{ textAlign: 'center' }}>
-                        {canAgree ? (
-                          <Btn size="sm" onClick={() => agree(inv)} disabled={agreeing === inv.id}>
-                            <Check size={12} /> {agreeing === inv.id ? 'Saving…' : 'Agree to 97%'}
-                          </Btn>
-                        ) : (
-                          <CustomerBadge status={inv.status} />
-                        )}
-                      </TD>
+                      <TD style={{ textAlign: 'center' }}><CustomerBadge status={inv.status} /></TD>
                       <TD style={{ textAlign: 'center' }}><DriveBadge url={inv.drive_file_url} /></TD>
                     </tr>
+                    {/* Inline note: this invoice needs the customer's email confirmation */}
+                    {pendingConf && (
+                      <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                        <td colSpan={7} style={{ padding: '0 14px 12px' }}>
+                          <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, color: '#92400e', display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontWeight: 700 }}>Action needed:</span>
+                            Please check your email inbox and confirm this invoice to proceed with your advance.
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   )
                 })}
                 {invoices.length === 0 && (

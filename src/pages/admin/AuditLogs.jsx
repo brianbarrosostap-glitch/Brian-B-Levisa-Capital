@@ -49,8 +49,10 @@ export default function AuditLogs() {
   })
 
   return (
-    <div>
-      <Card noPad>
+    <div style={{ minWidth: 0 }}>
+      {/* overflow:'hidden' on the default noPad Card CLIPS the wide audit
+          table; override to clip-y only so the inner overflow-x can scroll. */}
+      <Card noPad style={{ overflow: 'visible' }}>
         <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <SearchBar placeholder="Search action, invoice #, actor, table…" value={search} onChange={setSearch} />
         </div>
@@ -92,8 +94,8 @@ export default function AuditLogs() {
             ))}
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
+          <div style={{ width: '100%', maxWidth: '100%', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820, tableLayout: 'auto' }}>
               <thead>
                 <tr>
                   <TH>When</TH>

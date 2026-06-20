@@ -2,19 +2,19 @@
  * Edge Function: mark-invoice-status
  *
  * General-purpose admin action to move an invoice to a target status.
- * Handles the following actions from the Admin UI:
- *   - mark_paid_override   → status = "Paid"
- *   - set_void             → status = "Void"
- *   - mark_ryder_paid      → status = "Paid", sets ryder_paid_at
- *   - resubmit             → status = "Resubmitted"
- *   - mark_advance_paid    → status = "Advance Paid", sets advance_paid_at
+ * The Admin UI now uses the generic `set_status` action (a status dropdown);
+ * the older named actions are kept for backwards-compat:
+ *   - set_status        → status = body.status (any valid status), stamps the
+ *                         matching timestamp (advance_paid_at / ryder_submitted_at /
+ *                         paid_at+ryder_paid_at / voided_at)
+ *   - mark_advance_paid → status = "Advance Paid"
+ *   - mark_ryder_paid   → status = "Paid", sets ryder_paid_at
+ *   - mark_paid_override→ status = "Paid"
+ *   - resubmit          → status = "Resubmitted"
+ *   - set_void          → status = "Void"
  *
  * POST /functions/v1/mark-invoice-status
- * Body: {
- *   invoice_id: string,
- *   action: "mark_paid_override" | "set_void" | "mark_ryder_paid" | "resubmit" | "mark_advance_paid"
- *   note?: string
- * }
+ * Body: { invoice_id, action, status?, note? }
  */
 
 import { createClient } from '@supabase/supabase-js'
@@ -30,9 +30,17 @@ const VALID_ACTIONS = [
   'mark_ryder_paid',
   'resubmit',
   'mark_advance_paid',
+  'set_status',          // generic: admin sets any target status (body.status)
 ] as const
 
 type Action = typeof VALID_ACTIONS[number]
+
+// Valid invoice statuses an admin can set via the generic 'set_status' action.
+const VALID_STATUSES = [
+  'Uploaded', 'Eligible', 'Payment Requested', 'Advance Confirmed',
+  'Advance Agreed', 'Advance Paid', 'Submitted to Ryder', 'Acknowledged',
+  'Resubmitted', 'Paid', 'Void', 'Cancelled',
+]
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -65,7 +73,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    const { invoice_id, action, note } = await req.json()
+    const { invoice_id, action, status: targetStatus, note } = await req.json()
 
     if (!invoice_id || !action || !VALID_ACTIONS.includes(action)) {
       return new Response(
@@ -122,6 +130,25 @@ Deno.serve(async (req) => {
         update.status          = 'Advance Paid'
         update.advance_paid_at = now
         break
+
+      case 'set_status': {
+        // Generic manual override — admin picks any target status.
+        if (!targetStatus || !VALID_STATUSES.includes(targetStatus)) {
+          return new Response(
+            JSON.stringify({ error: `status must be one of: ${VALID_STATUSES.join(', ')}` }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+        update.status = targetStatus
+        // Stamp the relevant timestamp for the chosen status so downstream
+        // metrics (days-to-advance, days-to-payment, overdue) stay accurate.
+        if (targetStatus === 'Advance Paid')        update.advance_paid_at = now
+        if (targetStatus === 'Submitted to Ryder')  update.ryder_submitted_at = now
+        if (targetStatus === 'Paid') { update.paid_at = now; update.ryder_paid_at = now; update.due_date = null }
+        if (targetStatus === 'Void')      update.voided_at = now
+        if (targetStatus === 'Cancelled') update.voided_at = now
+        break
+      }
     }
 
     const { data: updated, error: updateErr } = await service

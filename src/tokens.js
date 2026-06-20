@@ -42,6 +42,9 @@ export const STATUS_COLOURS = {
   'Pending':             { bg: '#fef9c3', text: '#92400e' },
   'Pending Approval':    { bg: '#fef9c3', text: '#92400e' },
   'Overdue 60+':         { bg: '#fee2e2', text: '#991b1b' },
+  // Customer-facing badge colours
+  'Submitted':                 { bg: '#e0e7ff', text: '#3730a3' },
+  'Pending Your Confirmation': { bg: '#fef9c3', text: '#92400e' },
 };
 
 export const ROW_BG = {
@@ -51,20 +54,23 @@ export const ROW_BG = {
   'Payment Requested': '#fffdf5',
 };
 
-// Customer-facing labels — the internal status enum is engineering-speak.
-// The customer portal shows these friendlier words instead. Ryder-side
-// states all collapse to "Processing" because the customer doesn't track Ryder.
+// Customer-facing labels — the customer only sees THREE simple states:
+//   • "Submitted"               — anything before the confirmation email
+//   • "Pending Your Confirmation" — we emailed them; they must confirm the 97%
+//   • "Paid"                    — once they've agreed / been paid (and beyond)
+// Everything after the advance is between us and Ryder and doesn't concern
+// the customer, so it all reads "Paid".
 export const CUSTOMER_STATUS_LABEL = {
-  'Uploaded':            'Received',
-  'Eligible':            'Ready',
+  'Uploaded':            'Submitted',
+  'Eligible':            'Submitted',
   'Payment Requested':   'Submitted',
-  'Advance Confirmed':   'Approved — agree to 97%',
-  'Advance Agreed':      'Awaiting Payout',
-  'Advance Paid':        'Advance Paid',
-  'Submitted to Ryder':  'Processing',
-  'Acknowledged':        'Processing',
-  'Resubmitted':         'Processing',
-  'Paid':                'Completed',
+  'Advance Confirmed':   'Pending Your Confirmation',
+  'Advance Agreed':      'Paid',
+  'Advance Paid':        'Paid',
+  'Submitted to Ryder':  'Paid',
+  'Acknowledged':        'Paid',
+  'Resubmitted':         'Paid',
+  'Paid':                'Paid',
   'Void':                'Cancelled',
   'Cancelled':           'Cancelled',
 };

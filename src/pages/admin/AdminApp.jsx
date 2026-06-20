@@ -3,7 +3,6 @@ import { LayoutDashboard, ListOrdered, Receipt, ScrollText } from 'lucide-react'
 import { Shell, Topbar, PageContent } from '../../components/ui'
 import NotificationBell from '../../components/NotificationBell'
 import InstallPWA from '../../components/InstallPWA'
-import { supabase } from '../../lib/supabase'
 import Dashboard from './Dashboard'
 import Master from './Master'
 import Checks from './Checks'
@@ -30,31 +29,13 @@ export default function AdminApp({ user, onSignOut }) {
     const saved = localStorage.getItem('admin.page')
     return VALID.includes(saved) ? saved : 'dashboard'
   })
-  const [attnCount, setAttnCount] = useState(null)
 
   useEffect(() => { localStorage.setItem('admin.page', page) }, [page])
-
-  // Master badge = live count of OVERDUE invoices with Ryder (Acknowledged
-  // and past due_date) — these are the "needs attention" items now.
-  useEffect(() => {
-    const load = async () => {
-      const today = new Date().toISOString().slice(0, 10)
-      const { count } = await supabase
-        .from('invoices')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'Acknowledged')
-        .not('due_date', 'is', null)
-        .lt('due_date', today)
-      setAttnCount(count ?? 0)
-    }
-    load()
-  }, [page])
 
   const NavItems = (
     <>
       {NAV.map(n => {
         const Icon = n.icon
-        const badge = n.key === 'master' && attnCount ? attnCount : null
         return (
           <button key={n.key} onClick={() => setPage(n.key)} style={{
             display: 'flex', alignItems: 'center', gap: 9, width: '100%',
@@ -66,11 +47,6 @@ export default function AdminApp({ user, onSignOut }) {
           }}>
             <Icon size={16} />
             <span style={{ flex: 1 }}>{n.label}</span>
-            {badge != null && (
-              <span style={{ background: '#dc2626', color: '#fff', borderRadius: 9999, fontSize: 10, fontWeight: 700, padding: '1px 6px' }}>
-                {badge}
-              </span>
-            )}
           </button>
         )
       })}
