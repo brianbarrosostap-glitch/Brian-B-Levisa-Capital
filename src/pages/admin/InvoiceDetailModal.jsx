@@ -134,8 +134,13 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
     }
   })
 
-  const daysOut = d.ryder_days_out || (d.ryder_submitted_at
-    ? Math.floor((Date.now() - new Date(d.ryder_submitted_at)) / 86400000)
+  // Fall back to the first audit-log submission row when ryder_submitted_at
+  // is null (e.g. older invoices processed before the column was stamped).
+  const ryderSubmittedAt = d.ryder_submitted_at
+    || (submissions.length > 0 ? submissions[0].sent_at : null)
+
+  const daysOut = d.ryder_days_out || (ryderSubmittedAt
+    ? Math.floor((Date.now() - new Date(ryderSubmittedAt)) / 86400000)
     : null)
 
   return (
@@ -259,7 +264,7 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: C.textSm, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Ryder Tracking</div>
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 8, marginBottom: 10 }}>
-                  <Field label="Submitted"  value={d.ryder_submitted_at ? dt(d.ryder_submitted_at) : '—'} />
+                  <Field label="Submitted"  value={ryderSubmittedAt ? dt(ryderSubmittedAt) : '—'} />
                   <Field label="Conf. #"    value={d.ryder_conf_number || '—'} mono />
                   <Field label="Days Out"   value={daysOut != null ? `${daysOut}d` : '—'} red={daysOut >= 60} />
                   <Field label="Due Date"   value={d.due_date ? dt(d.due_date) : '—'} />
