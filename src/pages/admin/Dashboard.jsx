@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import { AlertTriangle, AlertCircle, Check } from 'lucide-react'
+import { AlertTriangle, AlertCircle } from 'lucide-react'
 import { C } from '../../tokens'
-import { Card, Btn, Modal, ModalBody, ModalFooter, Field, Grid, useIsMobile } from '../../components/ui'
-import { supabase, callFunction } from '../../lib/supabase'
+import { Card, Grid, useIsMobile } from '../../components/ui'
+import { supabase } from '../../lib/supabase'
 import { useDateRange, PRESETS } from '../../hooks/useDateRange'
 import { VolumeChart, PipelineChart } from './DashboardCharts'
 
@@ -116,124 +116,6 @@ function DateRangeBar({ preset, custom, applyPreset, applyCustom }) {
   )
 }
 
-/* ── Match Confirmation Modal ── */
-function MatchModal({ item, onClose, onResolved }) {
-  const [loading, setLoading]     = useState(false)
-  const [confirmed, setConfirmed] = useState(false)
-
-  const handleConfirm = async () => {
-    setLoading(true)
-    try {
-      await callFunction('match-confirmation', {
-        attention_id: item.id,
-        invoice_id:   item.invoice_id,
-        conf_number:  item.ryder_conf_number,
-      })
-      setConfirmed(true)
-      onResolved(item.id)
-    } catch (e) {
-      console.error(e)
-    }
-    setLoading(false)
-  }
-
-  if (confirmed) return (
-    <Modal onClose={onClose} title="Confirmed" width={520}>
-      <ModalBody>
-        <div style={{ textAlign: 'center', padding: '20px 0' }}>
-          <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#d1fae5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
-            <Check size={22} color={C.primary} />
-          </div>
-          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>Match confirmed!</div>
-          <div style={{ fontSize: 13, color: C.textSm }}>Conf. #{item.ryder_conf_number} linked and marked Matched.</div>
-        </div>
-      </ModalBody>
-      <ModalFooter><Btn onClick={onClose}>Done</Btn></ModalFooter>
-    </Modal>
-  )
-
-  return (
-    <Modal onClose={onClose} title="Match Confirmation Number" width={520}>
-      <ModalBody>
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Received from Ryder</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <Field label="Conf. # (from email)" value={item.ryder_conf_number} mono />
-            <Field label="Amount" value={fmt(item.ryder_amount)} accent />
-          </div>
-        </div>
-        <div style={{ margin: '18px 0 8px', fontSize: 11, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Proposed Match</div>
-        <div style={{
-          padding: '12px 14px', border: `1.5px solid ${C.primary}`, borderRadius: 10,
-          background: '#f6fef9', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 14, fontFamily: 'monospace' }}>{item.invoice_number}</div>
-            <div style={{ fontSize: 12, color: C.textSm, marginTop: 2 }}>Unit {item.unit_number}</div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontWeight: 700, fontSize: 15, color: C.primary }}>{fmt(item.ryder_amount)}</div>
-          </div>
-        </div>
-        <div style={{ fontSize: 12, color: C.textSm, marginTop: 12 }}>
-          Confirming links conf. <strong>#{item.ryder_conf_number}</strong> to invoice <strong>{item.invoice_number}</strong> and marks it Matched.
-        </div>
-      </ModalBody>
-      <ModalFooter>
-        <Btn variant="ghost" onClick={onClose}>Skip for now</Btn>
-        <Btn onClick={handleConfirm} disabled={loading}>
-          <Check size={13} /> {loading ? 'Saving…' : 'Confirm Match'}
-        </Btn>
-      </ModalFooter>
-    </Modal>
-  )
-}
-
-/* ── Cheque Entry Modal ── */
-function ChequeModal({ item, onClose, onResolved }) {
-  const [val, setVal]     = useState('')
-  const [loading, setLoading] = useState(false)
-
-  const handleSave = async () => {
-    setLoading(true)
-    try {
-      await callFunction('match-confirmation', {
-        attention_id: item.id,
-        invoice_id:   item.invoice_id,
-        check_number: val,
-      })
-      onResolved(item.id)
-      onClose()
-    } catch (e) {
-      console.error(e)
-    }
-    setLoading(false)
-  }
-
-  return (
-    <Modal onClose={onClose} title="Enter Check Manually" subtitle={item.invoice_number ? `Invoice ${item.invoice_number} — unreadable scan` : `Cheque ${item.check_number || '(no #)'} — no matched invoice`} width={480}>
-      <ModalBody>
-        <div style={{ padding: '11px 13px', borderRadius: 9, border: '1px solid #fecaca', background: '#fff8f8', fontSize: 13, color: '#991b1b', marginBottom: 18 }}>
-          Check #{item.check_number} was scanned but the invoice ID could not be read. Please enter the details manually.
-        </div>
-        <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: C.textSm, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          Check / Invoice Number
-        </label>
-        <input
-          value={val} onChange={e => setVal(e.target.value)}
-          placeholder={`e.g. ${item.invoice_number}`}
-          style={{ width: '100%', padding: '9px 13px', borderRadius: 8, border: `1px solid ${C.borderMd}`, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
-        />
-      </ModalBody>
-      <ModalFooter>
-        <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
-        <Btn onClick={handleSave} disabled={!val.trim() || loading}>
-          {loading ? 'Saving…' : 'Save Entry'}
-        </Btn>
-      </ModalFooter>
-    </Modal>
-  )
-}
 
 export default function Dashboard() {
   const { preset, custom, range, grain, applyPreset, applyCustom } = useDateRange('all')
@@ -243,9 +125,7 @@ export default function Dashboard() {
   const [metricsLoading, setMetricsLoading] = useState(true)
 
   const [alerts, setAlerts]     = useState([])
-  const [overdueAlerts, setOverdueAlerts] = useState([])   // live overdue-with-Ryder list
-  const [matchModal, setMatchModal] = useState(null)
-  const [chequeModal, setChequeModal] = useState(null)
+  const [overdueAlerts, setOverdueAlerts] = useState([])
 
   // Metrics + charts re-fetch whenever the shared date range changes,
   // so nothing can drift out of sync.
@@ -444,15 +324,6 @@ export default function Dashboard() {
                   <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{item.title}</div>
                   <div style={{ fontSize: 12, color: C.textSm, lineHeight: 1.4, marginTop: 2 }}>{item.detail}</div>
                 </div>
-                {/* Overdue rows are informational (no match action). */}
-                {!isOverdue && item.action_label && (
-                  <Btn variant="secondary" size="sm" onClick={() => {
-                    if (isAmber) setMatchModal(item)
-                    else setChequeModal(item)
-                  }}>
-                    {item.action_label}
-                  </Btn>
-                )}
                 {isOverdue && (
                   <span style={{ fontSize: 11, fontWeight: 700, color: C.red, background: C.redLt, borderRadius: 9999, padding: '3px 10px', whiteSpace: 'nowrap' }}>OVERDUE</span>
                 )}
@@ -462,9 +333,6 @@ export default function Dashboard() {
         )}
       </Card>
       ) })()}
-
-      {matchModal  && <MatchModal  item={matchModal}  onClose={() => setMatchModal(null)}  onResolved={handleResolved} />}
-      {chequeModal && <ChequeModal item={chequeModal} onClose={() => setChequeModal(null)} onResolved={handleResolved} />}
     </div>
   )
 }

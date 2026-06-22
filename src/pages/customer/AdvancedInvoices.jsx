@@ -15,8 +15,8 @@ const DriveBadge = ({ url }) => (
   </a>
 )
 
-// Friendly status pill using the customer label map.
-const CustomerBadge = ({ status }) => <Badge status={customerStatus(status)} />
+// Friendly status pill — use raw status for colour, customer label for text.
+const CustomerBadge = ({ status }) => <Badge status={status} label={customerStatus(status)} />
 
 export default function AdvancedInvoices() {
   const isMobile = useIsMobile()

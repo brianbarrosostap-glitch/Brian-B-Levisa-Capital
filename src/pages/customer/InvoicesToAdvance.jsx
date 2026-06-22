@@ -292,21 +292,21 @@ export default function InvoicesToAdvance() {
       </Card>
 
       {/* Sticky Action Bar */}
-      <div style={{ position: 'sticky', bottom: 16, marginTop: 16, background: '#1a3a2a', borderRadius: 10, padding: '13px 22px', boxShadow: '0 2px 20px rgba(0,0,0,0.14)', display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+      <div style={{ position: 'sticky', bottom: 16, marginTop: 16, background: '#fff', border: `1.5px solid ${C.border}`, borderRadius: 10, padding: '13px 22px', boxShadow: '0 4px 24px rgba(0,0,0,0.10)', display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 28, flex: 1, minWidth: 200 }}>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Selected</div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: '#fff' }}>{selectedInvoices.length} of {invoices.length}</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Selected</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{selectedInvoices.length} of {invoices.length}</div>
           </div>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Invoice Total</div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>{fmt(totalAmount)}</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Invoice Total</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.text, fontVariantNumeric: 'tabular-nums' }}>{fmt(totalAmount)}</div>
           </div>
         </div>
         <button
           onClick={() => selectedInvoices.length > 0 && setSubmitModal(true)}
           disabled={selectedInvoices.length === 0}
-          style={{ padding: '10px 22px', borderRadius: 8, border: 'none', background: selectedInvoices.length === 0 ? 'rgba(255,255,255,0.15)' : C.primary, color: selectedInvoices.length === 0 ? 'rgba(255,255,255,0.35)' : '#000', fontWeight: 700, fontSize: 13.5, cursor: selectedInvoices.length === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', flexShrink: 0 }}
+          style={{ padding: '10px 22px', borderRadius: 8, border: 'none', background: selectedInvoices.length === 0 ? C.border : C.primary, color: selectedInvoices.length === 0 ? C.textMut : '#000', fontWeight: 700, fontSize: 13.5, cursor: selectedInvoices.length === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', flexShrink: 0 }}
         >
           Submit Advance Request
         </button>
