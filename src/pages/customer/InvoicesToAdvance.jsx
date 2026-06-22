@@ -6,17 +6,8 @@ import { supabase, callFunction } from '../../lib/supabase'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-// "Remove" on the customer list is UI-only (the invoice stays in Drive / DB).
-// We persist hidden ids in localStorage so a removed row stays hidden on refresh.
-const HIDE_KEY = 'customer.hiddenInvoices'
-const getHidden = () => {
-  try { return new Set(JSON.parse(localStorage.getItem(HIDE_KEY) || '[]')) }
-  catch { return new Set() }
-}
-const hideInvoice = (id) => {
-  const h = getHidden(); h.add(id)
-  localStorage.setItem(HIDE_KEY, JSON.stringify([...h]))
-}
+// Invoice deletion is a real DB delete via the delete-invoice edge function.
+// The function also fires a webhook so n8n can move the Drive file to trash.
 
 const DriveBadge = ({ url }) => (
   <a href={url || '#'} target={url ? '_blank' : undefined} rel="noreferrer" onClick={!url ? e => e.preventDefault() : undefined} style={{
@@ -28,10 +19,25 @@ const DriveBadge = ({ url }) => (
   </a>
 )
 
-/* ── Remove Modal ── */
+/* ── Delete Modal ── */
 function RemoveModal({ inv, onClose, onConfirm }) {
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError]       = useState('')
+
+  const handleDelete = async () => {
+    setDeleting(true)
+    setError('')
+    try {
+      await onConfirm()
+      onClose()
+    } catch (e) {
+      setError(e?.message || 'Could not delete the invoice. Please try again.')
+      setDeleting(false)
+    }
+  }
+
   return (
-    <Modal onClose={onClose} title="Remove from advance list?" width={420}>
+    <Modal onClose={onClose} title="Delete invoice?" width={420}>
       <ModalBody>
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
           <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -39,17 +45,24 @@ function RemoveModal({ inv, onClose, onConfirm }) {
           </div>
           <div>
             <div style={{ fontSize: 13.5, fontWeight: 600, color: C.text, marginBottom: 6 }}>
-              Remove {inv.invoice_number} ({fmt(inv.invoice_amount)}) from your upcoming advance request.
+              Permanently delete invoice {inv.invoice_number} ({fmt(inv.invoice_amount)})?
             </div>
             <div style={{ fontSize: 12.5, color: C.textSm, lineHeight: 1.5 }}>
-              The invoice stays in Google Drive and can be included in a future request.
+              This will remove it from the portal. The Drive file will be moved to the archive folder automatically.
             </div>
           </div>
         </div>
+        {error && (
+          <div style={{ marginTop: 12, background: '#fff5f5', border: '1px solid #fecaca', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, color: '#991b1b' }}>
+            {error}
+          </div>
+        )}
       </ModalBody>
       <ModalFooter>
-        <Btn variant="secondary" size="sm" onClick={onClose}>Keep it</Btn>
-        <Btn variant="danger"    size="sm" onClick={() => { onConfirm(); onClose() }}>Remove Invoice</Btn>
+        <Btn variant="secondary" size="sm" onClick={onClose} disabled={deleting}>Keep it</Btn>
+        <Btn variant="danger" size="sm" onClick={handleDelete} disabled={deleting}>
+          {deleting ? 'Deleting…' : 'Delete Invoice'}
+        </Btn>
       </ModalFooter>
     </Modal>
   )
@@ -143,9 +156,7 @@ export default function InvoicesToAdvance() {
       .order('invoice_date', { ascending: false })
 
     if (data) {
-      // Respect locally-hidden invoices (UI-only "remove", persisted across refresh).
-      const hidden = getHidden()
-      setInvoices(data.filter(i => !hidden.has(i.id)))
+      setInvoices(data)
       setSyncedAt(new Date())
     }
     setLoading(false)
@@ -281,21 +292,21 @@ export default function InvoicesToAdvance() {
       </Card>
 
       {/* Sticky Action Bar */}
-      <div style={{ position: 'sticky', bottom: 16, marginTop: 16, background: C.sidebar, borderRadius: 10, padding: '13px 22px', boxShadow: '0 2px 20px rgba(0,0,0,0.14)', display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+      <div style={{ position: 'sticky', bottom: 16, marginTop: 16, background: '#1a3a2a', borderRadius: 10, padding: '13px 22px', boxShadow: '0 2px 20px rgba(0,0,0,0.14)', display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 28, flex: 1, minWidth: 200 }}>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Selected</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Selected</div>
             <div style={{ fontSize: 17, fontWeight: 700, color: '#fff' }}>{selectedInvoices.length} of {invoices.length}</div>
           </div>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Invoice Total</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Invoice Total</div>
             <div style={{ fontSize: 17, fontWeight: 700, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>{fmt(totalAmount)}</div>
           </div>
         </div>
         <button
           onClick={() => selectedInvoices.length > 0 && setSubmitModal(true)}
           disabled={selectedInvoices.length === 0}
-          style={{ padding: '10px 22px', borderRadius: 8, border: 'none', background: selectedInvoices.length === 0 ? 'rgba(255,255,255,0.25)' : '#fff', color: selectedInvoices.length === 0 ? 'rgba(255,255,255,0.4)' : C.primary, fontWeight: 700, fontSize: 13.5, cursor: selectedInvoices.length === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', flexShrink: 0 }}
+          style={{ padding: '10px 22px', borderRadius: 8, border: 'none', background: selectedInvoices.length === 0 ? 'rgba(255,255,255,0.15)' : C.primary, color: selectedInvoices.length === 0 ? 'rgba(255,255,255,0.35)' : '#000', fontWeight: 700, fontSize: 13.5, cursor: selectedInvoices.length === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', flexShrink: 0 }}
         >
           Submit Advance Request
         </button>
@@ -303,8 +314,8 @@ export default function InvoicesToAdvance() {
 
       {removeModal && (
         <RemoveModal inv={removeModal} onClose={() => setRemoveModal(null)}
-          onConfirm={() => {
-            hideInvoice(removeModal.id)
+          onConfirm={async () => {
+            await callFunction('delete-invoice', { invoice_id: removeModal.id })
             setInvoices(prev => prev.filter(i => i.id !== removeModal.id))
             setSelected(prev => { const n = new Set(prev); n.delete(removeModal.id); return n })
           }}

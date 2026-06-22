@@ -66,14 +66,16 @@ returns json language sql stable as $$
     'advance_paid_count',        (select count(*) from scoped where status = 'Advance Paid'),
     'advance_paid_value',        (select coalesce(sum(advance_amount),0) from scoped where status = 'Advance Paid'),
 
-    'pending_ryder_count',       (select count(*) from scoped where status in ('Submitted to Ryder','Acknowledged','Resubmitted')),
-    'pending_ryder_value',       (select coalesce(sum(advance_amount),0) from scoped where status in ('Submitted to Ryder','Acknowledged','Resubmitted')),
+    -- Tile 1: Submitted to Ryder (or Resubmitted) — no acknowledgement yet.
+    'pending_ryder_count',       (select count(*) from scoped where status in ('Submitted to Ryder','Resubmitted')),
+    'pending_ryder_value',       (select coalesce(sum(advance_amount),0) from scoped where status in ('Submitted to Ryder','Resubmitted')),
 
-    -- Overdue = status is 'Acknowledged' (Ryder confirmed) AND the due_date
-    -- has passed. due_date = Ryder confirmation + 60 days (set by
-    -- ingest-confirmation), so a passed due_date means Ryder hasn't paid
-    -- within the 60-day window. Only Acknowledged counts — 'Submitted to
-    -- Ryder' is not yet acknowledged, so it isn't overdue here.
+    -- Tile 2: Acknowledged by Ryder — confirmed receipt, cheque not yet received.
+    -- Excludes overdue (due_date passed) so tiles are mutually exclusive.
+    'acknowledged_unpaid_count', (select count(*) from scoped where status = 'Acknowledged' and (due_date is null or due_date >= current_date)),
+    'acknowledged_unpaid_value', (select coalesce(sum(advance_amount),0) from scoped where status = 'Acknowledged' and (due_date is null or due_date >= current_date)),
+
+    -- Tile 3: Overdue = Acknowledged AND due_date passed (60-day window exceeded).
     'overdue_60_count',          (select count(*) from scoped where status = 'Acknowledged' and due_date is not null and due_date < current_date),
     'overdue_60_value',          (select coalesce(sum(advance_amount),0) from scoped where status = 'Acknowledged' and due_date is not null and due_date < current_date),
 

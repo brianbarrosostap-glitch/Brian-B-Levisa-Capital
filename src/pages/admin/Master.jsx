@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Check, X } from 'lucide-react'
+import { Check } from 'lucide-react'
 import { C, ROW_BG, adminStatus } from '../../tokens'
 import { Card, Btn, Badge, Tabs, SearchBar, FilterChip, KebabMenu, TH, TD, Modal, ModalBody, ModalFooter, useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
@@ -113,11 +113,6 @@ export default function Master() {
   const [statusFilter, setStatusFilter] = useState('')
   const [invoices, setInvoices] = useState([])
   const [pendingBatches, setPendingBatches] = useState([])
-  // Banners hidden via the × button — persisted so they stay dismissed on refresh.
-  const [dismissed, setDismissed] = useState(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('master.dismissedBatches') || '[]')) }
-    catch { return new Set() }
-  })
   const [activeBatch, setActiveBatch] = useState(null)   // the batch being reviewed
   const [detailModal, setDetailModal] = useState(null)
   const [loading, setLoading]   = useState(true)
@@ -162,19 +157,7 @@ export default function Master() {
       .eq('status', 'Pending')
       .order('submitted_at', { ascending: false })
 
-    const list = batches || []
-    setPendingBatches(list)
-
-    // Prune dismissed ids that are no longer pending (reviewed/approved),
-    // so the persisted set doesn't grow unbounded.
-    setDismissed(prev => {
-      const liveIds = new Set(list.map(b => b.id))
-      const pruned = new Set([...prev].filter(id => liveIds.has(id)))
-      if (pruned.size !== prev.size) {
-        localStorage.setItem('master.dismissedBatches', JSON.stringify([...pruned]))
-      }
-      return pruned
-    })
+    setPendingBatches(batches || [])
   }
 
   const active    = invoices.filter(i => !['Void','Cancelled'].includes(i.status))
@@ -203,38 +186,6 @@ export default function Master() {
 
   return (
     <div>
-      {/* Pending Request Banners — one per pending advance request */}
-      {pendingBatches.filter(b => !dismissed.has(b.id)).map(batch => {
-        const invs = batch.invoices || []
-        return (
-          <div key={batch.id} style={{ background: '#fffdf5', border: '1px solid #fde68a', borderRadius: 9, padding: '11px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: '#fef9c3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth="2.5"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20"/></svg>
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: C.textB }}>
-                New advance request — {invs.length > 0 ? invs.map(i => i.invoice_number).join(', ') : '—'}{' '}
-              </span>
-              <span style={{ fontSize: 12, color: C.textSm }}>
-                {invs.length} invoice{invs.length !== 1 ? 's' : ''} · {fmt(invs.reduce((s,i)=>s+Number(i.invoice_amount),0))} · Submitted by {batch.client?.name} · {new Date(batch.submitted_at).toLocaleDateString()}
-              </span>
-            </div>
-            <Btn size="sm" onClick={() => setActiveBatch(batch)}>Review Request</Btn>
-            <button
-              onClick={() => setDismissed(prev => {
-                const next = new Set(prev).add(batch.id)
-                localStorage.setItem('master.dismissedBatches', JSON.stringify([...next]))
-                return next
-              })}
-              aria-label="Dismiss"
-              title="Dismiss (request stays until reviewed)"
-              style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #fde68a', background: '#fffdf5', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-            >
-              <X size={13} color={C.textMut} />
-            </button>
-          </div>
-        )
-      })}
 
       <Card noPad>
         <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>

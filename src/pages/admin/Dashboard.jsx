@@ -357,13 +357,15 @@ export default function Dashboard() {
 
       {/* ── Ryder side — the debtor journey (we send → they pay us) ── */}
       <SectionHeader title="Ryder — Debtor Side" hint="invoice sent to Ryder, through to Ryder paying us back" />
-      <Grid cols={3} tabletCols={3} mobileCols={1} gap={11}>
-        <KpiCard label="Awaiting Ryder Confirmation" party="Ryder" borderColor="#b45309"
-          value={metricsLoading ? loadingTile : num(m.pending_ryder_count)} amount={metricsLoading ? null : fmt(m.pending_ryder_value)} sub="sent, awaiting Ryder reply" />
+      <Grid cols={4} tabletCols={2} mobileCols={1} gap={11}>
+        <KpiCard label="Submitted to Ryder" party="Ryder" borderColor="#b45309"
+          value={metricsLoading ? loadingTile : num(m.pending_ryder_count)} amount={metricsLoading ? null : fmt(m.pending_ryder_value)} sub="sent — no acknowledgement yet" />
+        <KpiCard label="Acknowledged — Awaiting Cheque" party="Ryder" borderColor="#7c3aed"
+          value={metricsLoading ? loadingTile : num(m.acknowledged_unpaid_count)} amount={metricsLoading ? null : fmt(m.acknowledged_unpaid_value)} sub="Ryder confirmed receipt, cheque not received" />
         <KpiCard label="Overdue with Ryder" party="Ryder" borderColor={C.red} alert valueColor={C.red}
-          value={metricsLoading ? loadingTile : num(m.overdue_60_count)} amount={metricsLoading ? null : fmt(m.overdue_60_value)} sub="due date passed — follow up" />
+          value={metricsLoading ? loadingTile : num(m.overdue_60_count)} amount={metricsLoading ? null : fmt(m.overdue_60_value)} sub="acknowledged, due date passed — follow up" />
         <KpiCard label="Ryder Paid to Us" party="Ryder" borderColor="#059669"
-          value={metricsLoading ? loadingTile : num(m.collected_ryder_count)} amount={metricsLoading ? null : fmt(m.collected_ryder_value)} sub="cycle complete" />
+          value={metricsLoading ? loadingTile : num(m.collected_ryder_count)} amount={metricsLoading ? null : fmt(m.collected_ryder_value)} sub="cheque received — cycle complete" />
       </Grid>
 
       {/* ── Section 2: Financial Summary ── */}
