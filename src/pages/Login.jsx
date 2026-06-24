@@ -176,15 +176,7 @@ export default function Login() {
         </div>
       </div>
 
-      {/* Role hint */}
-      <div style={{
-        marginTop: 20, display: 'flex', gap: 16,
-        fontSize: 11.5, color: C.textMut,
-      }}>
-        <span>🏢 Admin: divyanshu.sharma@growwstacks.com</span>
-        <span>·</span>
-        <span>📄 Client: divyanshutest2@gmail.com</span>
-      </div>
+     
     </div>
   )
 }

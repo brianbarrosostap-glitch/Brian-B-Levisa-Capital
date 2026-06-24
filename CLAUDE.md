@@ -134,10 +134,7 @@ SUPABASE_SETUP.md                  # Step-by-step Supabase setup guide
 NOTE: the live DB actually uses these emails (the originals in older docs were
 placeholders). The seed file `20260616000002_seed_data.sql` matches by these:
 
-| Email | Role | Name |
-|---|---|---|
-| divyanshu.sharma@growwstacks.com | admin | Divyanshu Sharma |
-| divyanshutest2@gmail.com | customer | Sarah Mitchell / RZR Inc |
+
 
 (A second admin `brian@levisacapital.com` also exists in auth.) After creating
 auth users, run `BACKFILL_PROFILES.sql` so each gets a `profiles` row, and make
