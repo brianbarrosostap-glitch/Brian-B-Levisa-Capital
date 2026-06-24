@@ -25,7 +25,7 @@ export default function NotificationBell({ role = 'admin' }) {
   const fetchItems = async () => {
     // Role-targeted: admin sees admin+all, customer sees customer+all.
     // (RLS additionally restricts customers to their own client's rows.)
-    const audiences = role === 'admin' ? ['admin', 'all'] : ['customer', 'all']
+    const audiences = role === 'admin' ? ['admin', 'all'] : ['customer']
     const { data, error } = await supabase
       .from('notifications')
       .select('id, title, body, new_status, read, created_at, audience')

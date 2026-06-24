@@ -141,7 +141,7 @@ export default function Master() {
     if (!silent) setLoading(true)
     const { data, error } = await supabase
       .from('invoices')
-      .select(`id, invoice_number, po_number, unit_number, invoice_date, invoice_amount, advance_amount, status, batch_id, resubmit_count, client:clients(name)`)
+      .select(`id, invoice_number, po_number, unit_number, invoice_date, invoice_amount, advance_amount, status, batch_id, resubmit_count, ryder_conf_number, client:clients(name)`)
       .order('invoice_date', { ascending: false })
     if (error) console.error('Master fetchInvoices failed:', error)
     // Only overwrite when we actually got rows back — never wipe the table
@@ -228,6 +228,7 @@ export default function Master() {
                   ['Resent to Ryder', `${inv.resubmit_count ?? 0}×`],
                   ['Invoice Amount', fmt(inv.invoice_amount)],
                   ['Advance @97%', fmt(inv.advance_amount)],
+                  ['Conf #', inv.ryder_conf_number || '—'],
                 ].map(([k, v]) => (
                   <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 12.5 }}>
                     <span style={{ color: C.textMut, fontWeight: 600 }}>{k}</span>
@@ -264,6 +265,7 @@ export default function Master() {
                 <TH>Unit #</TH>
                 <TH style={{ textAlign: 'right' }}>Invoice Amount</TH>
                 <TH style={{ textAlign: 'right' }}>Advance @97%</TH>
+                <TH>Conf #</TH>
                 <TH>Status</TH>
                 <TH style={{ width: 32 }} />
               </tr>
@@ -282,6 +284,7 @@ export default function Master() {
                   <TD muted>{inv.unit_number}</TD>
                   <TD style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(inv.invoice_amount)}</TD>
                   <TD accent style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(inv.advance_amount)}</TD>
+                  <TD mono muted>{inv.ryder_conf_number || '—'}</TD>
                   <TD>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <Badge status={inv.status} label={adminStatus(inv.status)} />
@@ -314,7 +317,7 @@ export default function Master() {
                   </td>
                   <td style={{ padding: '11px 13px', textAlign: 'right', fontSize: 13, fontWeight: 700, color: C.primary, fontVariantNumeric: 'tabular-nums' }}>{fmt(listTotalInvoice)}</td>
                   <td style={{ padding: '11px 13px', textAlign: 'right', fontSize: 13, fontWeight: 700, color: C.primary, fontVariantNumeric: 'tabular-nums' }}>{fmt(listTotalAdvance)}</td>
-                  <td colSpan={2} />
+                  <td colSpan={3} />
                 </tr>
               </tfoot>
             )}

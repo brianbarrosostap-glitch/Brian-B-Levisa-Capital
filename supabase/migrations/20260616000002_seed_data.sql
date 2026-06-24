@@ -2,9 +2,8 @@
 -- Levisa Capital — Seed Data
 -- Run this AFTER:
 --   1. Running FRESH_RESET.sql
---   2. Creating auth users in Dashboard → Authentication → Users:
---        divyanshu.sharma@growwstacks.com  (admin)    (any password)
---        divyanshutest2@gmail.com          (customer) (any password)
+--   2. Creating the admin and customer auth users in
+--      Dashboard → Authentication → Users (any password)
 -- =============================================================
 
 do $$
