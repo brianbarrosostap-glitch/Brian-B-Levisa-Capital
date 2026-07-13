@@ -15,8 +15,14 @@ const DriveBadge = ({ url }) => (
   </a>
 )
 
-// Friendly status pill — use raw status for colour, customer label for text.
-const CustomerBadge = ({ status }) => <Badge status={status} label={customerStatus(status)} />
+// Friendly status pill — normalise colour key so all "Paid" labels share one colour.
+const CUSTOMER_COLOUR_KEY = {
+  'Advance Paid': 'Paid', 'Submitted to Ryder': 'Paid',
+  'Acknowledged': 'Paid', 'Resubmitted': 'Paid',
+}
+const CustomerBadge = ({ status }) => (
+  <Badge status={CUSTOMER_COLOUR_KEY[status] || status} label={customerStatus(status)} />
+)
 
 export default function AdvancedInvoices() {
   const isMobile = useIsMobile()

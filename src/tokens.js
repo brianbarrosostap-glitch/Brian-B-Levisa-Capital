@@ -66,7 +66,7 @@ export const CUSTOMER_STATUS_LABEL = {
   'Payment Requested':   'Submitted',
   'Advance Confirmed':   'Pending Your Confirmation',
   'Advance Agreed':      'Advance Approved',
-  'Advance Paid':        'Advance Approved',
+  'Advance Paid':        'Paid',
   'Submitted to Ryder':  'Paid',
   'Acknowledged':        'Paid',
   'Resubmitted':         'Paid',
