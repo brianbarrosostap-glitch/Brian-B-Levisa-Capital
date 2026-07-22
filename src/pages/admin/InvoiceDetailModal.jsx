@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { AlertTriangle, ExternalLink } from 'lucide-react'
 import { C, adminStatus } from '../../tokens'
-import { Modal, ModalBody, ModalFooter, Badge, Field, TimelineStep, useIsMobile } from '../../components/ui'
+import { Modal, ModalBody, ModalFooter, Btn, Badge, Field, TimelineStep, useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -86,13 +86,40 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
     setLoading(false)
   }
 
-  // Admin manual status change (only Paid / Cancelled are exposed).
-  const handleAction = async (status) => {
+  const [confPrompt, setConfPrompt] = useState(false)
+  const [confNumber, setConfNumber] = useState('')
+  const [confError, setConfError]   = useState('')
+  const [actionLoading, setActionLoading] = useState(false)
+
+  const handleAction = async (status, confNum) => {
+    setActionLoading(true)
     try {
-      await callFunction('mark-invoice-status', { invoice_id: inv.id, action: 'set_status', status })
+      await callFunction('mark-invoice-status', {
+        invoice_id: inv.id,
+        action: 'set_status',
+        status,
+        ...(confNum ? { conf_number: confNum, note: `Conf #: ${confNum}` } : {}),
+      })
       fetchDetail()
       onRefresh?.()
     } catch (e) { console.error(e) }
+    setActionLoading(false)
+  }
+
+  const handleSelect = (status) => {
+    if (status === 'Acknowledged') {
+      setConfPrompt(true)
+      setConfNumber('')
+      setConfError('')
+    } else {
+      handleAction(status)
+    }
+  }
+
+  const handleConfSubmit = () => {
+    if (!confNumber.trim()) { setConfError('Required'); return }
+    setConfPrompt(false)
+    handleAction('Acknowledged', confNumber.trim())
   }
 
   const d = detail || inv
@@ -303,21 +330,47 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
         </ModalBody>
       )}
       <ModalFooter>
-        {/* All other statuses are automated by n8n. The admin only manually
-            sets these two terminal states: Paid (cheque received) and Cancelled. */}
-        <span style={{ fontSize: 12, fontWeight: 600, color: C.textSm }}>Admin status:</span>
-        <select
-          value=""
-          onChange={(e) => { if (e.target.value) handleAction(e.target.value) }}
-          style={{
-            padding: '7px 11px', borderRadius: 8, border: `1px solid ${C.borderMd}`,
-            fontSize: 13, fontFamily: 'inherit', color: C.text, background: '#fff', cursor: 'pointer', minWidth: 220,
-          }}
-        >
-          <option value="" disabled>Update status…</option>
-          <option value="Paid">Mark as Paid — cheque received</option>
-          <option value="Cancelled">Cancel Invoice (void)</option>
-        </select>
+        {confPrompt ? (
+          <>
+            <label htmlFor="conf-number-input" style={{ fontSize: 12, fontWeight: 700, color: C.textSm }}>Ryder Conf #:</label>
+            <input
+              id="conf-number-input"
+              autoFocus
+              value={confNumber}
+              onChange={e => { setConfNumber(e.target.value); setConfError('') }}
+              placeholder="e.g. 11158289"
+              onKeyDown={e => e.key === 'Enter' && handleConfSubmit()}
+              style={{
+                flex: 1, padding: '7px 11px', borderRadius: 8,
+                border: `1.5px solid ${confError ? C.red : C.borderMd}`,
+                fontSize: 13, fontFamily: 'monospace', color: C.text, outline: 'none',
+              }}
+            />
+            {confError && <span style={{ fontSize: 12, color: C.red }}>{confError}</span>}
+            <Btn variant="secondary" onClick={() => setConfPrompt(false)} disabled={actionLoading}>Cancel</Btn>
+            <Btn onClick={handleConfSubmit} disabled={actionLoading}>{actionLoading ? 'Saving…' : 'Confirm'}</Btn>
+          </>
+        ) : (
+          <>
+            <span style={{ fontSize: 12, fontWeight: 600, color: C.textSm }}>Admin status:</span>
+            <select
+              value=""
+              onChange={(e) => { if (e.target.value) handleSelect(e.target.value) }}
+              disabled={actionLoading}
+              style={{
+                padding: '7px 11px', borderRadius: 8, border: `1px solid ${C.borderMd}`,
+                fontSize: 13, fontFamily: 'inherit', color: C.text, background: '#fff', cursor: 'pointer', minWidth: 240,
+              }}
+            >
+              <option value="" disabled>Update status…</option>
+              <option value="Submitted to Ryder">Submitted to Ryder</option>
+              <option value="Acknowledged">Acknowledged by Ryder (enter conf #)</option>
+              <option value="Resubmitted">Resubmitted to Ryder</option>
+              <option value="Paid">Paid — Cheque Received</option>
+              <option value="Cancelled">Cancel Invoice (void)</option>
+            </select>
+          </>
+        )}
       </ModalFooter>
     </Modal>
   )

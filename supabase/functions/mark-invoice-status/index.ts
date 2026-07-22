@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    const { invoice_id, action, status: targetStatus, note } = await req.json()
+    const { invoice_id, action, status: targetStatus, note, conf_number } = await req.json()
 
     if (!invoice_id || !action || !VALID_ACTIONS.includes(action)) {
       return new Response(
@@ -144,6 +144,15 @@ Deno.serve(async (req) => {
         // metrics (days-to-advance, days-to-payment, overdue) stay accurate.
         if (targetStatus === 'Advance Paid')        update.advance_paid_at = now
         if (targetStatus === 'Submitted to Ryder')  update.ryder_submitted_at = now
+        if (targetStatus === 'Acknowledged') {
+          update.ryder_confirmed_at = now
+          if (!inv.ryder_submitted_at) update.ryder_submitted_at = now
+          if (conf_number) update.ryder_conf_number = conf_number
+          // Set 60-day due date from acknowledgement
+          const due = new Date(now)
+          due.setDate(due.getDate() + 60)
+          update.due_date = due.toISOString().slice(0, 10)
+        }
         if (targetStatus === 'Paid') { update.paid_at = now; update.ryder_paid_at = now; update.due_date = null }
         if (targetStatus === 'Void')      update.voided_at = now
         if (targetStatus === 'Cancelled') update.voided_at = now

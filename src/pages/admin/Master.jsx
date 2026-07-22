@@ -106,6 +106,78 @@ function BatchModal({ batch, invoices, onClose, onApproved }) {
   )
 }
 
+/* ── Status Action Modal — collects conf # for Acknowledged ── */
+function StatusActionModal({ inv, action, onClose, onDone }) {
+  const [confNumber, setConfNumber] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError]     = useState('')
+
+  const needsConf = action === 'Acknowledged'
+
+  const handleSubmit = async () => {
+    if (needsConf && !confNumber.trim()) { setError('Confirmation number is required'); return }
+    setLoading(true)
+    try {
+      await callFunction('mark-invoice-status', {
+        invoice_id: inv.id,
+        action: 'set_status',
+        status: action,
+        ...(needsConf ? { note: `Conf #: ${confNumber.trim()}`, conf_number: confNumber.trim() } : {}),
+      })
+      onDone()
+      onClose()
+    } catch (e) { setError(String(e)); setLoading(false) }
+  }
+
+  const labels = {
+    'Submitted to Ryder': 'Submitted to Ryder',
+    'Acknowledged':        'Acknowledged by Ryder',
+    'Resubmitted':         'Resubmitted to Ryder',
+    'Paid':                'Paid — Cheque Received',
+  }
+
+  return (
+    <Modal onClose={onClose} width={420} title={`Mark: ${labels[action] || action}`} subtitle={`Invoice ${inv.invoice_number}`}>
+      <ModalBody>
+        {needsConf && (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSm, marginBottom: 6 }}>
+              Ryder Confirmation Number <span style={{ color: C.red }}>*</span>
+            </label>
+            <input
+              autoFocus
+              value={confNumber}
+              onChange={e => { setConfNumber(e.target.value); setError('') }}
+              placeholder="e.g. 11158289"
+              style={{
+                width: '100%', boxSizing: 'border-box', padding: '9px 12px',
+                borderRadius: 8, border: `1.5px solid ${error ? C.red : C.borderMd}`,
+                fontSize: 14, fontFamily: 'monospace', color: C.text, outline: 'none',
+              }}
+              onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+            />
+            {error && <div style={{ fontSize: 12, color: C.red, marginTop: 5 }}>{error}</div>}
+            <div style={{ fontSize: 11.5, color: C.textMut, marginTop: 6 }}>
+              Found in the subject line of Ryder's acknowledgement email.
+            </div>
+          </div>
+        )}
+        {!needsConf && (
+          <div style={{ fontSize: 13, color: C.textSm }}>
+            This will move invoice <strong>{inv.invoice_number}</strong> to <strong>{labels[action]}</strong>. Continue?
+          </div>
+        )}
+      </ModalBody>
+      <ModalFooter>
+        <Btn variant="secondary" onClick={onClose} disabled={loading}>Cancel</Btn>
+        <Btn onClick={handleSubmit} disabled={loading}>
+          {loading ? 'Saving…' : `Confirm`}
+        </Btn>
+      </ModalFooter>
+    </Modal>
+  )
+}
+
 export default function Master() {
   const isMobile = useIsMobile()
   const [tab, setTab]           = useState('active')
@@ -115,6 +187,7 @@ export default function Master() {
   const [pendingBatches, setPendingBatches] = useState([])
   const [activeBatch, setActiveBatch] = useState(null)   // the batch being reviewed
   const [detailModal, setDetailModal] = useState(null)
+  const [statusAction, setStatusAction] = useState(null) // { inv, action }
   const [loading, setLoading]   = useState(true)
 
   useEffect(() => {
@@ -184,6 +257,9 @@ export default function Master() {
     } catch (e) { console.error(e) }
   }
 
+  // Open the status-action modal for the 4 new manual status transitions.
+  const openStatusAction = (inv, targetStatus) => setStatusAction({ inv, action: targetStatus })
+
   return (
     <div>
 
@@ -239,9 +315,12 @@ export default function Master() {
                   <KebabMenu items={[
                     { label: 'View Detail', onClick: () => setDetailModal(inv) },
                     { label: 'Mark Advance Paid', onClick: () => handleMarkStatus(inv, 'mark_advance_paid') },
+                    { label: 'Submitted to Ryder', onClick: () => openStatusAction(inv, 'Submitted to Ryder') },
+                    { label: 'Acknowledged by Ryder', onClick: () => openStatusAction(inv, 'Acknowledged') },
+                    { label: 'Resubmitted to Ryder', onClick: () => openStatusAction(inv, 'Resubmitted') },
+                    { label: 'Mark Paid — Cheque Received', onClick: () => openStatusAction(inv, 'Paid') },
                     { label: 'Mark Ryder Paid',   onClick: () => handleMarkStatus(inv, 'mark_ryder_paid') },
                     { label: 'Mark Paid (override)', onClick: () => handleMarkStatus(inv, 'mark_paid_override') },
-                    { label: 'Resubmit',  onClick: () => handleMarkStatus(inv, 'resubmit') },
                     { label: 'Cancel Invoice', danger: true, onClick: () => handleMarkStatus(inv, 'set_status', 'Cancelled') },
                   ]} />
                 </div>
@@ -337,6 +416,15 @@ export default function Master() {
 
       {detailModal && (
         <InvoiceDetailModal invoice={detailModal} onClose={() => setDetailModal(null)} onRefresh={fetchInvoices} />
+      )}
+
+      {statusAction && (
+        <StatusActionModal
+          inv={statusAction.inv}
+          action={statusAction.action}
+          onClose={() => setStatusAction(null)}
+          onDone={fetchInvoices}
+        />
       )}
     </div>
   )
