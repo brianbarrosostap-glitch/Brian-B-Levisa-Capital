@@ -106,74 +106,108 @@ function BatchModal({ batch, invoices, onClose, onApproved }) {
   )
 }
 
-/* ── Status Action Modal — collects conf # for Acknowledged ── */
+/* ── Status Action Modal — two-step: input → confirm → save ── */
+const STATUS_LABELS = {
+  'Submitted to Ryder': 'Submitted to Ryder',
+  'Acknowledged':        'Acknowledged by Ryder',
+  'Resubmitted':         'Resubmitted to Ryder',
+  'Paid':                'Paid — Cheque Received',
+}
+
 function StatusActionModal({ inv, action, onClose, onDone }) {
+  const [step, setStep]           = useState('input')   // 'input' | 'confirm'
   const [confNumber, setConfNumber] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState('')
+  const [loading, setLoading]     = useState(false)
+  const [error, setError]         = useState('')
 
   const needsConf = action === 'Acknowledged'
+  const label     = STATUS_LABELS[action] || action
 
-  const handleSubmit = async () => {
+  const goConfirm = () => {
     if (needsConf && !confNumber.trim()) { setError('Confirmation number is required'); return }
+    setError('')
+    setStep('confirm')
+  }
+
+  const handleSave = async () => {
     setLoading(true)
     try {
       await callFunction('mark-invoice-status', {
         invoice_id: inv.id,
         action: 'set_status',
         status: action,
-        ...(needsConf ? { note: `Conf #: ${confNumber.trim()}`, conf_number: confNumber.trim() } : {}),
+        ...(needsConf ? { conf_number: confNumber.trim(), note: `Conf #: ${confNumber.trim()}` } : {}),
       })
       onDone()
       onClose()
-    } catch (e) { setError(String(e)); setLoading(false) }
-  }
-
-  const labels = {
-    'Submitted to Ryder': 'Submitted to Ryder',
-    'Acknowledged':        'Acknowledged by Ryder',
-    'Resubmitted':         'Resubmitted to Ryder',
-    'Paid':                'Paid — Cheque Received',
+    } catch (e) { setError(String(e)); setStep('input'); setLoading(false) }
   }
 
   return (
-    <Modal onClose={onClose} width={420} title={`Mark: ${labels[action] || action}`} subtitle={`Invoice ${inv.invoice_number}`}>
-      <ModalBody>
-        {needsConf && (
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSm, marginBottom: 6 }}>
-              Ryder Confirmation Number <span style={{ color: C.red }}>*</span>
-            </label>
-            <input
-              autoFocus
-              value={confNumber}
-              onChange={e => { setConfNumber(e.target.value); setError('') }}
-              placeholder="e.g. 11158289"
-              style={{
-                width: '100%', boxSizing: 'border-box', padding: '9px 12px',
-                borderRadius: 8, border: `1.5px solid ${error ? C.red : C.borderMd}`,
-                fontSize: 14, fontFamily: 'monospace', color: C.text, outline: 'none',
-              }}
-              onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-            />
-            {error && <div style={{ fontSize: 12, color: C.red, marginTop: 5 }}>{error}</div>}
-            <div style={{ fontSize: 11.5, color: C.textMut, marginTop: 6 }}>
-              Found in the subject line of Ryder's acknowledgement email.
+    <Modal onClose={onClose} width={420} title={`Update Status`} subtitle={`Invoice ${inv.invoice_number}`}>
+      {step === 'input' ? (
+        <>
+          <ModalBody>
+            <div style={{ marginBottom: needsConf ? 16 : 0 }}>
+              <div style={{ fontSize: 13, color: C.textSm, marginBottom: needsConf ? 16 : 0 }}>
+                New status: <strong style={{ color: C.text }}>{label}</strong>
+              </div>
+              {needsConf && (
+                <>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSm, marginBottom: 6 }}>
+                    Ryder Confirmation Number <span style={{ color: C.red }}>*</span>
+                  </label>
+                  <input
+                    autoFocus
+                    value={confNumber}
+                    onChange={e => { setConfNumber(e.target.value); setError('') }}
+                    placeholder="e.g. 11158289"
+                    style={{
+                      width: '100%', boxSizing: 'border-box', padding: '9px 12px',
+                      borderRadius: 8, border: `1.5px solid ${error ? C.red : C.borderMd}`,
+                      fontSize: 14, fontFamily: 'monospace', color: C.text, outline: 'none',
+                    }}
+                    onKeyDown={e => e.key === 'Enter' && goConfirm()}
+                  />
+                  {error && <div style={{ fontSize: 12, color: C.red, marginTop: 5 }}>{error}</div>}
+                  <div style={{ fontSize: 11.5, color: C.textMut, marginTop: 6 }}>
+                    Found in the subject line of Ryder's acknowledgement email.
+                  </div>
+                </>
+              )}
             </div>
-          </div>
-        )}
-        {!needsConf && (
-          <div style={{ fontSize: 13, color: C.textSm }}>
-            This will move invoice <strong>{inv.invoice_number}</strong> to <strong>{labels[action]}</strong>. Continue?
-          </div>
-        )}
-      </ModalBody>
-      <ModalFooter>
-        <Btn variant="secondary" onClick={onClose} disabled={loading}>Cancel</Btn>
-        <Btn onClick={handleSubmit} disabled={loading}>
-          {loading ? 'Saving…' : `Confirm`}
-        </Btn>
-      </ModalFooter>
+          </ModalBody>
+          <ModalFooter>
+            <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+            <Btn onClick={goConfirm}>Next →</Btn>
+          </ModalFooter>
+        </>
+      ) : (
+        <>
+          <ModalBody>
+            <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '16px 18px' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#92400e', marginBottom: 8 }}>Are you sure?</div>
+              <div style={{ fontSize: 13, color: C.textSm, lineHeight: 1.6 }}>
+                This will move invoice <strong style={{ color: C.text, fontFamily: 'monospace' }}>{inv.invoice_number}</strong> to:
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: C.primary, margin: '10px 0' }}>{label}</div>
+              {needsConf && (
+                <div style={{ fontSize: 12.5, color: C.textSm }}>
+                  Conf #: <strong style={{ fontFamily: 'monospace', color: C.text }}>{confNumber}</strong>
+                </div>
+              )}
+              <div style={{ fontSize: 11.5, color: C.textMut, marginTop: 8 }}>This action cannot be undone from the portal.</div>
+            </div>
+            {error && <div style={{ fontSize: 12, color: C.red, marginTop: 10 }}>{error}</div>}
+          </ModalBody>
+          <ModalFooter>
+            <Btn variant="secondary" onClick={() => setStep('input')} disabled={loading}>← Back</Btn>
+            <Btn onClick={handleSave} disabled={loading}>
+              {loading ? 'Saving…' : 'Yes, Update Status'}
+            </Btn>
+          </ModalFooter>
+        </>
+      )}
     </Modal>
   )
 }

@@ -86,40 +86,52 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
     setLoading(false)
   }
 
-  const [confPrompt, setConfPrompt] = useState(false)
-  const [confNumber, setConfNumber] = useState('')
-  const [confError, setConfError]   = useState('')
+  // Two-step status update: idle → input (conf # if needed) → confirm → save
+  const [footerStep, setFooterStep]   = useState('idle')    // 'idle' | 'input' | 'confirm'
+  const [pendingStatus, setPendingStatus] = useState('')
+  const [confNumber, setConfNumber]   = useState('')
+  const [confError, setConfError]     = useState('')
   const [actionLoading, setActionLoading] = useState(false)
 
-  const handleAction = async (status, confNum) => {
+  const STATUS_LABELS_MODAL = {
+    'Submitted to Ryder': 'Submitted to Ryder',
+    'Acknowledged':        'Acknowledged by Ryder',
+    'Resubmitted':         'Resubmitted to Ryder',
+    'Paid':                'Paid — Cheque Received',
+    'Cancelled':           'Cancel Invoice (void)',
+  }
+
+  const resetFooter = () => { setFooterStep('idle'); setPendingStatus(''); setConfNumber(''); setConfError('') }
+
+  const handleSelect = (status) => {
+    setPendingStatus(status)
+    setConfNumber('')
+    setConfError('')
+    setFooterStep('input')
+  }
+
+  const goConfirm = () => {
+    if (pendingStatus === 'Acknowledged' && !confNumber.trim()) { setConfError('Required'); return }
+    setConfError('')
+    setFooterStep('confirm')
+  }
+
+  const handleSave = async () => {
     setActionLoading(true)
     try {
       await callFunction('mark-invoice-status', {
         invoice_id: inv.id,
         action: 'set_status',
-        status,
-        ...(confNum ? { conf_number: confNum, note: `Conf #: ${confNum}` } : {}),
+        status: pendingStatus,
+        ...(pendingStatus === 'Acknowledged' && confNumber.trim()
+          ? { conf_number: confNumber.trim(), note: `Conf #: ${confNumber.trim()}` }
+          : {}),
       })
+      resetFooter()
       fetchDetail()
       onRefresh?.()
     } catch (e) { console.error(e) }
     setActionLoading(false)
-  }
-
-  const handleSelect = (status) => {
-    if (status === 'Acknowledged') {
-      setConfPrompt(true)
-      setConfNumber('')
-      setConfError('')
-    } else {
-      handleAction(status)
-    }
-  }
-
-  const handleConfSubmit = () => {
-    if (!confNumber.trim()) { setConfError('Required'); return }
-    setConfPrompt(false)
-    handleAction('Acknowledged', confNumber.trim())
   }
 
   const d = detail || inv
@@ -330,33 +342,12 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
         </ModalBody>
       )}
       <ModalFooter>
-        {confPrompt ? (
-          <>
-            <label htmlFor="conf-number-input" style={{ fontSize: 12, fontWeight: 700, color: C.textSm }}>Ryder Conf #:</label>
-            <input
-              id="conf-number-input"
-              autoFocus
-              value={confNumber}
-              onChange={e => { setConfNumber(e.target.value); setConfError('') }}
-              placeholder="e.g. 11158289"
-              onKeyDown={e => e.key === 'Enter' && handleConfSubmit()}
-              style={{
-                flex: 1, padding: '7px 11px', borderRadius: 8,
-                border: `1.5px solid ${confError ? C.red : C.borderMd}`,
-                fontSize: 13, fontFamily: 'monospace', color: C.text, outline: 'none',
-              }}
-            />
-            {confError && <span style={{ fontSize: 12, color: C.red }}>{confError}</span>}
-            <Btn variant="secondary" onClick={() => setConfPrompt(false)} disabled={actionLoading}>Cancel</Btn>
-            <Btn onClick={handleConfSubmit} disabled={actionLoading}>{actionLoading ? 'Saving…' : 'Confirm'}</Btn>
-          </>
-        ) : (
+        {footerStep === 'idle' && (
           <>
             <span style={{ fontSize: 12, fontWeight: 600, color: C.textSm }}>Admin status:</span>
             <select
               value=""
-              onChange={(e) => { if (e.target.value) handleSelect(e.target.value) }}
-              disabled={actionLoading}
+              onChange={e => { if (e.target.value) handleSelect(e.target.value) }}
               style={{
                 padding: '7px 11px', borderRadius: 8, border: `1px solid ${C.borderMd}`,
                 fontSize: 13, fontFamily: 'inherit', color: C.text, background: '#fff', cursor: 'pointer', minWidth: 240,
@@ -369,6 +360,52 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
               <option value="Paid">Paid — Cheque Received</option>
               <option value="Cancelled">Cancel Invoice (void)</option>
             </select>
+          </>
+        )}
+
+        {footerStep === 'input' && (
+          <>
+            <span style={{ fontSize: 12, fontWeight: 600, color: C.textSm }}>
+              → {STATUS_LABELS_MODAL[pendingStatus]}
+            </span>
+            {pendingStatus === 'Acknowledged' && (
+              <>
+                <label htmlFor="conf-number-input" style={{ fontSize: 12, fontWeight: 700, color: C.textSm }}>Conf #:</label>
+                <input
+                  id="conf-number-input"
+                  autoFocus
+                  value={confNumber}
+                  onChange={e => { setConfNumber(e.target.value); setConfError('') }}
+                  placeholder="e.g. 11158289"
+                  onKeyDown={e => e.key === 'Enter' && goConfirm()}
+                  style={{
+                    flex: 1, padding: '7px 11px', borderRadius: 8,
+                    border: `1.5px solid ${confError ? C.red : C.borderMd}`,
+                    fontSize: 13, fontFamily: 'monospace', color: C.text, outline: 'none',
+                  }}
+                />
+                {confError && <span style={{ fontSize: 12, color: C.red }}>{confError}</span>}
+              </>
+            )}
+            <Btn variant="secondary" onClick={resetFooter}>Cancel</Btn>
+            <Btn onClick={goConfirm}>Next →</Btn>
+          </>
+        )}
+
+        {footerStep === 'confirm' && (
+          <>
+            <div style={{ flex: 1, fontSize: 13, color: C.textSm }}>
+              Confirm: move <strong style={{ fontFamily: 'monospace' }}>{d.invoice_number}</strong> to{' '}
+              <strong style={{ color: C.primary }}>{STATUS_LABELS_MODAL[pendingStatus]}</strong>
+              {pendingStatus === 'Acknowledged' && confNumber && (
+                <span style={{ color: C.textMut }}> · Conf # <strong style={{ fontFamily: 'monospace', color: C.text }}>{confNumber}</strong></span>
+              )}
+              ?
+            </div>
+            <Btn variant="secondary" onClick={() => setFooterStep('input')} disabled={actionLoading}>← Back</Btn>
+            <Btn onClick={handleSave} disabled={actionLoading}>
+              {actionLoading ? 'Saving…' : 'Yes, Update'}
+            </Btn>
           </>
         )}
       </ModalFooter>
