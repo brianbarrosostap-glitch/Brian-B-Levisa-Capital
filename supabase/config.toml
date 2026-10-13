@@ -66,6 +66,9 @@ verify_jwt = true
 [functions.mark-invoice-status]
 verify_jwt = true
 
+[functions.toggle-audit-todo]
+verify_jwt = true
+
 [functions.agree-advance]
 verify_jwt = true
 

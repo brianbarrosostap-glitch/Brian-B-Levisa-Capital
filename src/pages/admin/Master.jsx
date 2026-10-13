@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react'
-import { Check } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 import { C, ROW_BG, adminStatus } from '../../tokens'
 import { Card, Btn, Badge, Tabs, SearchBar, FilterChip, KebabMenu, TH, TD, Modal, ModalBody, ModalFooter, useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
 import InvoiceDetailModal from './InvoiceDetailModal'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtAdv = n => n == null ? '—' : 'ADV-' + String(n).padStart(4, '0')
+// "ADV-12", "adv 0012", "ADV#12" → 12 (exact advance-number search)
+const parseAdvQuery = q => { const m = q.trim().match(/^adv[\s\-#]*0*(\d+)$/i); return m ? Number(m[1]) : null }
 
 /* ── Batch Approval Modal ── */
 function BatchModal({ batch, invoices, onClose, onApproved }) {
@@ -223,15 +226,17 @@ export default function Master() {
   const [detailModal, setDetailModal] = useState(null)
   const [statusAction, setStatusAction] = useState(null) // { inv, action }
   const [loading, setLoading]   = useState(true)
+  const [chequesByInvoice, setChequesByInvoice] = useState({})
 
   useEffect(() => {
     fetchInvoices()
+    fetchCheques()
     fetchPendingBatch()
 
     // Keep the admin list in sync with status changes made elsewhere
     // (customer submits, n8n/email ingest, etc.) — refresh when the
     // window/tab regains focus or becomes visible.
-    const refresh = () => { fetchInvoices(true); fetchPendingBatch() }   // silent — don't blank the table
+    const refresh = () => { fetchInvoices(true); fetchCheques(); fetchPendingBatch() }   // silent — don't blank the table
     const onVis = () => { if (!document.hidden) refresh() }
     window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', onVis)
@@ -248,13 +253,32 @@ export default function Master() {
     if (!silent) setLoading(true)
     const { data, error } = await supabase
       .from('invoices')
-      .select(`id, invoice_number, po_number, unit_number, invoice_date, invoice_amount, advance_amount, status, batch_id, resubmit_count, ryder_conf_number, client:clients(name)`)
+      .select(`id, invoice_number, po_number, unit_number, invoice_date, invoice_amount, advance_amount, status, batch_id, advance_number, resubmit_count, ryder_conf_number, client:clients(name)`)
       .order('invoice_date', { ascending: false })
     if (error) console.error('Master fetchInvoices failed:', error)
     // Only overwrite when we actually got rows back — never wipe the table
     // (and the visible statuses) just because a background refetch errored.
     if (Array.isArray(data)) setInvoices(data)
     if (!silent) setLoading(false)
+  }
+
+  // invoice_id → [cheque numbers] — separate query so a cheque error can
+  // never blank the invoice table. Links via cheque_invoices + cheques.invoice_id.
+  const fetchCheques = async () => {
+    const { data, error } = await supabase
+      .from('cheques')
+      .select('check_number, invoice_id, cheque_invoices(invoice_id)')
+    if (error) { console.error('Master fetchCheques failed:', error); return }
+    const map = {}
+    for (const c of data || []) {
+      if (!c.check_number) continue
+      const ids = new Set([c.invoice_id, ...(c.cheque_invoices || []).map(ci => ci.invoice_id)].filter(Boolean))
+      for (const id of ids) {
+        const list = (map[id] ||= [])
+        if (!list.includes(c.check_number)) list.push(c.check_number)   // de-dupe re-ingested cheques
+      }
+    }
+    setChequesByInvoice(map)
   }
 
   const fetchPendingBatch = async () => {
@@ -271,9 +295,13 @@ export default function Master() {
   // Void + Cancelled are merged into one "Cancelled" bucket (both are dead invoices).
   const cancelled = invoices.filter(i => ['Void','Cancelled'].includes(i.status))
 
+  const advQuery = parseAdvQuery(search)
   const list = (tab === 'active' ? active : cancelled).filter(i => {
     const q = search.toLowerCase()
-    const matchQ = !q || i.invoice_number?.toLowerCase().includes(q) || i.unit_number?.includes(q) || i.po_number?.toLowerCase().includes(q)
+    const matchQ = advQuery != null
+      ? i.advance_number === advQuery
+      : !q || i.invoice_number?.toLowerCase().includes(q) || i.unit_number?.includes(q) || i.po_number?.toLowerCase().includes(q)
+        || (chequesByInvoice[i.id] || []).some(n => n.toLowerCase().includes(q))
     const matchS = !statusFilter || i.status === statusFilter
     return matchQ && matchS
   })
@@ -299,9 +327,50 @@ export default function Master() {
 
       <Card noPad>
         <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <SearchBar placeholder="Search invoice #, unit, amount…" value={search} onChange={setSearch} />
+          <SearchBar placeholder="Search invoice #, PO, unit, cheque #, or ADV-12…" value={search} onChange={setSearch} />
           <FilterChip label="Status" options={statuses} value={statusFilter} onChange={setStatusFilter} />
+          {(search || statusFilter) && (
+            <button type="button" onClick={() => { setSearch(''); setStatusFilter('') }}
+              title="Clear search and filters"
+              onMouseEnter={e => { e.currentTarget.style.background = C.red; e.currentTarget.style.color = '#fff' }}
+              onMouseLeave={e => { e.currentTarget.style.background = C.redLt; e.currentTarget.style.color = C.red }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px',
+                borderRadius: 8, border: `1px solid ${C.red}`, background: C.redLt, color: C.red,
+                fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                fontFamily: 'Inter, system-ui, -apple-system, sans-serif', transition: 'background .15s, color .15s',
+              }}>
+              <X size={13} strokeWidth={2.5} /> Clear filters
+            </button>
+          )}
         </div>
+        {advQuery != null && (
+          /* ── Advance summary — reconcile against the bank transfer ── */
+          <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.border}`, background: '#f0faf5', display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Advance</div>
+              <div style={{ fontSize: 16, fontWeight: 800, fontFamily: 'monospace', color: C.text }}>{fmtAdv(advQuery)}</div>
+            </div>
+            {list.length === 0 ? (
+              <div style={{ fontSize: 13, color: C.textMut }}>No invoices found for this advance{tab === 'cancelled' ? ' in Cancelled' : ''}.</div>
+            ) : (
+              <>
+                <div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Invoices</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>{list.length}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Invoice Total</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: C.text, fontVariantNumeric: 'tabular-nums' }}>{fmt(listTotalInvoice)}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Advance Total (RZR) — expected transfer</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: C.primary, fontVariantNumeric: 'tabular-nums' }}>{fmt(listTotalAdvance)}</div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
         <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}` }}>
           <Tabs active={tab} onChange={setTab} tabs={[
             { key: 'active',    label: 'Active',    count: active.length },
@@ -338,6 +407,8 @@ export default function Master() {
                   ['Resent to Ryder', `${inv.resubmit_count ?? 0}×`],
                   ['Invoice Amount', fmt(inv.invoice_amount)],
                   ['Advance @97%', fmt(inv.advance_amount)],
+                  ['Advance #', fmtAdv(inv.advance_number)],
+                  ['Cheque #', (chequesByInvoice[inv.id] || []).join(', ') || '—'],
                   ['Conf #', inv.ryder_conf_number || '—'],
                 ].map(([k, v]) => (
                   <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 12.5 }}>
@@ -369,7 +440,7 @@ export default function Master() {
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1040 }}>
             <thead>
               <tr>
                 <TH>Invoice Date</TH>
@@ -378,6 +449,8 @@ export default function Master() {
                 <TH>Unit #</TH>
                 <TH style={{ textAlign: 'right' }}>Invoice Amount</TH>
                 <TH style={{ textAlign: 'right' }}>Advance @97%</TH>
+                <TH>Advance #</TH>
+                <TH style={{ width: 140 }}>Cheque #</TH>
                 <TH>Conf #</TH>
                 <TH>Status</TH>
                 <TH style={{ width: 32 }} />
@@ -397,6 +470,20 @@ export default function Master() {
                   <TD muted>{inv.unit_number}</TD>
                   <TD style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(inv.invoice_amount)}</TD>
                   <TD accent style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(inv.advance_amount)}</TD>
+                  <TD mono>
+                    {inv.advance_number != null ? (
+                      <span title="Show all invoices in this advance"
+                        onClick={e => { e.stopPropagation(); setSearch(fmtAdv(inv.advance_number)) }}
+                        style={{ color: C.primary, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}>
+                        {fmtAdv(inv.advance_number)}
+                      </span>
+                    ) : '—'}
+                  </TD>
+                  <TD mono muted>
+                    <div title={(chequesByInvoice[inv.id] || []).join(', ')} style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {(chequesByInvoice[inv.id] || []).join(', ') || '—'}
+                    </div>
+                  </TD>
                   <TD mono muted>{inv.ryder_conf_number || '—'}</TD>
                   <TD>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -430,7 +517,7 @@ export default function Master() {
                   </td>
                   <td style={{ padding: '11px 13px', textAlign: 'right', fontSize: 13, fontWeight: 700, color: C.primary, fontVariantNumeric: 'tabular-nums' }}>{fmt(listTotalInvoice)}</td>
                   <td style={{ padding: '11px 13px', textAlign: 'right', fontSize: 13, fontWeight: 700, color: C.primary, fontVariantNumeric: 'tabular-nums' }}>{fmt(listTotalAdvance)}</td>
-                  <td colSpan={3} />
+                  <td colSpan={5} />
                 </tr>
               </tfoot>
             )}

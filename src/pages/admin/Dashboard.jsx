@@ -5,6 +5,7 @@ import { Card, Grid, useIsMobile } from '../../components/ui'
 import { supabase } from '../../lib/supabase'
 import { useDateRange, PRESETS } from '../../hooks/useDateRange'
 import { VolumeChart, PipelineChart } from './DashboardCharts'
+import AuditTodos from './AuditTodos'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const num = n => Number(n || 0).toLocaleString('en-US')
@@ -217,6 +218,9 @@ export default function Dashboard() {
 
   return (
     <div>
+      {/* Audit checklist — not date-filtered, so nothing unverified hides */}
+      <AuditTodos />
+
       {/* Global sticky date-range filter — controls every tile + chart */}
       <DateRangeBar preset={preset} custom={custom} applyPreset={applyPreset} applyCustom={applyCustom} />
 

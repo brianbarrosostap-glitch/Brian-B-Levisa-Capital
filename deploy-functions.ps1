@@ -28,7 +28,8 @@ $functions = @(
     "approve-batch",
     "submit-advance-request",
     "match-confirmation",
-    "mark-invoice-status"
+    "mark-invoice-status",
+    "toggle-audit-todo"
 )
 
 foreach ($fn in $functions) {

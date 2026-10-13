@@ -16,7 +16,7 @@ fi
 
 supabase link --project-ref "$PROJECT_REF"
 
-for fn in approve-batch submit-advance-request match-confirmation mark-invoice-status; do
+for fn in approve-batch submit-advance-request match-confirmation mark-invoice-status toggle-audit-todo; do
   echo "Deploying $fn ..."
   supabase functions deploy "$fn" --project-ref "$PROJECT_REF"
 done

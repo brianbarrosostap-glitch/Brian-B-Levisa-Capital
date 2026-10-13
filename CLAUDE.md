@@ -65,6 +65,17 @@ The `ingest-*` functions verify the caller holds the **service_role** key. They 
 - **Shared date filter:** `src/hooks/useDateRange.js` (presets: This Month/Quarter/Last 6 Months/This Year/All Time + custom range). One `{start,end}` drives ALL queries so metrics never drift. Sticky `DateRangeBar` at top.
 - **Labeling convention:** every tile/chart tags the party — **RZR** (customer we advance to), **Ryder** (debtor who pays Lavisa), **Lavisa** (our earnings). Keep this on any new metric.
 
+### Advance numbers (added 2026-10-13)
+- **`batches.advance_number` + `invoices.advance_number`** (int, from `advance_number_seq`, shown as `ADV-0001`). Migration `20261013000001_advance_number.sql` (includes backfill).
+- Assigned by DB trigger `trg_assign_advance_number` the first time an invoice reaches `Advance Agreed` or a later paid-out stage, or gets `customer_confirmed_at`. One advance = one batch: every invoice in the batch shares the number. A batch-less invoice gets its own. Once set, it never changes. Don't assign it in edge functions.
+- Master: searching `ADV-12` filters to that advance exactly and shows a summary bar (count, invoice total, advance total = expected bank transfer). Clicking an Advance # cell runs that search.
+
+### Audit to-dos + cheque search (added 2026-10-13)
+- **`public.audit_todos`** (admin-only RLS) + view `v_audit_todos` (`security_invoker`, live amounts). Migration `20261013000002_audit_todos.sql` — run AFTER `…000001_advance_number.sql`.
+- To-dos are created by DB triggers only: `trg_cheque_todo` (one per inserted cheque → compare to bank deposit) and inside `assign_advance_number()` (one per new advance number → compare to bank transfer). n8n needs no changes.
+- Checked off via edge function **`toggle-audit-todo`** (admin JWT, `{todo_id, done, note?}`) → writes `audit_logs`. UI: `src/pages/admin/AuditTodos.jsx` at the top of Dashboard (not date-filtered).
+- Master search also matches **cheque numbers** (separate `cheques` query, mapped via `cheque_invoices` + `cheques.invoice_id`); there's a Cheque # column.
+
 ### Other UI (2026-06-18)
 - **Admin Audit Logs tab** — `src/pages/admin/AuditLogs.jsx` reads `v_audit_logs`. Admin nav: Dashboard / Master / Cheques / Audit Logs (the "Checks" tab is labelled **Cheques** now; internal route key is `cheques`).
 - **Customer "remove" is UI-only and persisted** in `localStorage` (`customer.hiddenInvoices`) — stays hidden across refresh; never touches the DB.
