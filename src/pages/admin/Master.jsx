@@ -302,7 +302,9 @@ export default function Master() {
       ? i.advance_number === advQuery
       : !q || i.invoice_number?.toLowerCase().includes(q) || i.unit_number?.includes(q) || i.po_number?.toLowerCase().includes(q)
         || (chequesByInvoice[i.id] || []).some(n => n.toLowerCase().includes(q))
-    const matchS = !statusFilter || i.status === statusFilter
+    // An ADV-search totals the WHOLE advance (expected bank transfer), so the
+    // status filter is ignored there — otherwise the total looks short.
+    const matchS = advQuery != null || !statusFilter || i.status === statusFilter
     return matchQ && matchS
   })
 
