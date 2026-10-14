@@ -4,7 +4,7 @@ import { C } from '../../tokens'
 import { Card, Grid, useIsMobile } from '../../components/ui'
 import { supabase } from '../../lib/supabase'
 import { useDateRange, PRESETS } from '../../hooks/useDateRange'
-import { VolumeChart, PipelineChart } from './DashboardCharts'
+import { VolumeChart } from './DashboardCharts'
 import AuditTodos from './AuditTodos'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -55,61 +55,69 @@ const SectionHeader = ({ title, hint }) => (
 /* ── Global date-range filter (responsive) ── */
 function DateRangeBar({ preset, custom, applyPreset, applyCustom }) {
   const isMobile = useIsMobile()
-  const inputStyle = (active) => ({
-    padding: '8px 10px', borderRadius: 7, fontSize: 13, height: 36, boxSizing: 'border-box',
-    border: `1px solid ${active ? C.primary : C.border}`, fontFamily: 'inherit', color: C.text, background: '#fff',
-    flex: isMobile ? 1 : undefined, minWidth: 0,
-  })
+  const isCustom = preset === 'custom'
+
+  const label = (text) => (
+    <span style={{ fontSize: 10.5, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{text}</span>
+  )
+
+  const dateInput = (value, onChange, extra) => (
+    <input type="date" value={value} onChange={onChange} {...extra} style={{
+      height: 34, padding: '0 10px', boxSizing: 'border-box', minWidth: 0,
+      borderRadius: 8, fontSize: 13, fontFamily: 'inherit', color: C.text, background: '#fff',
+      border: `1px solid ${isCustom ? C.primary : C.border}`,
+      flex: isMobile ? 1 : '0 0 138px',
+    }} />
+  )
+
   return (
     <div style={{
-      background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10,
-      boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-      padding: isMobile ? '12px' : '10px 14px', marginBottom: 16,
+      background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12,
+      boxShadow: '0 1px 3px rgba(0,0,0,0.06)', marginBottom: 16,
+      padding: isMobile ? 12 : '10px 14px',
+      // Desktop: card spans 70% of the row so the segments stay compact.
+      width: isMobile ? 'auto' : '70%', minWidth: isMobile ? 0 : 'min(100%, 760px)', boxSizing: 'border-box',
       display: 'flex', flexDirection: isMobile ? 'column' : 'row',
-      alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? 10 : 8, flexWrap: 'wrap',
+      alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? 10 : 14,
     }}>
-      <span style={{ fontSize: 11, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Date Range</span>
+      {label('Date Range')}
 
-      {/* Presets — wrap into a tidy grid on mobile */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      {/* Segmented control — equal-width segments that fill the row */}
+      <div style={{
+        flex: 1, minWidth: 0, padding: 3, borderRadius: 10, background: '#f1f5f9', border: `1px solid ${C.border}`,
+        display: 'grid', gap: 3,
+        gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : `repeat(${PRESETS.length}, 1fr)`,
+      }}>
         {PRESETS.map(p => {
           const on = preset === p.key
           return (
-            <button key={p.key} onClick={() => applyPreset(p.key)} style={{
-              padding: isMobile ? '8px 12px' : '6px 12px', height: 36, boxSizing: 'border-box',
-              borderRadius: 7, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-              border: `1px solid ${on ? C.primary : C.border}`,
-              background: on ? C.primary : '#fff', color: on ? '#fff' : C.textSm,
-              fontFamily: 'inherit', whiteSpace: 'nowrap',
-              flex: isMobile ? '1 1 auto' : undefined,
-            }}>{p.label}</button>
+            <button key={p.key} type="button" onClick={() => applyPreset(p.key)} style={{
+              height: 30, padding: '0 8px', border: 'none', borderRadius: 7, cursor: 'pointer',
+              fontSize: 12.5, fontWeight: on ? 700 : 600, fontFamily: 'inherit', whiteSpace: 'nowrap',
+              overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0,
+              background: on ? C.primary : 'transparent', color: on ? '#fff' : C.textSm,
+              boxShadow: on ? '0 1px 3px rgba(0,121,83,0.35)' : 'none',
+              transition: 'background .15s, color .15s',
+            }}
+              onMouseEnter={e => { if (!on) e.currentTarget.style.background = '#fff' }}
+              onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}
+            >{p.label}</button>
           )
         })}
       </div>
 
-      {!isMobile && <div style={{ width: 1, height: 22, background: C.border, margin: '0 2px' }} />}
+      {!isMobile && <div style={{ width: 1, alignSelf: 'stretch', background: C.border }} />}
 
-      {/* Custom range — labelled so the empty native date boxes are clear.
-          (iOS date inputs don't render placeholder text, hence the labels.) */}
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, width: isMobile ? '100%' : undefined }}>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: isMobile ? 1 : undefined, minWidth: 0 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.04em' }}>From</span>
-          <input type="date" value={custom.start} max={custom.end || undefined}
-            onChange={e => applyCustom(e.target.value, custom.end || e.target.value)}
-            style={inputStyle(preset === 'custom')} />
-        </label>
-        <span style={{ fontSize: 13, color: C.textMut, flexShrink: 0, paddingBottom: 8 }}>→</span>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: isMobile ? 1 : undefined, minWidth: 0 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.04em' }}>To</span>
-          <input type="date" value={custom.end} min={custom.start || undefined}
-            onChange={e => applyCustom(custom.start || e.target.value, e.target.value)}
-            style={inputStyle(preset === 'custom')} />
-        </label>
-        {preset === 'custom' && (
-          <button onClick={() => applyPreset('all')} title="Clear custom range" style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', height: 36, boxSizing: 'border-box',
-            padding: '0 12px', borderRadius: 7, border: `1px solid ${C.border}`, background: '#fff',
-            color: C.red, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, whiteSpace: 'nowrap',
+      {/* Custom range — inline: CUSTOM [from] → [to] ✕ */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        {label('Custom')}
+        {dateInput(custom.start, e => applyCustom(e.target.value, custom.end || e.target.value), { max: custom.end || undefined, 'aria-label': 'From date' })}
+        <span style={{ fontSize: 13, color: C.textMut, flexShrink: 0 }}>→</span>
+        {dateInput(custom.end, e => applyCustom(custom.start || e.target.value, e.target.value), { min: custom.start || undefined, 'aria-label': 'To date' })}
+        {isCustom && (
+          <button type="button" onClick={() => applyPreset('all')} title="Clear custom range" style={{
+            width: 30, height: 30, flexShrink: 0, borderRadius: 7, border: `1px solid ${C.border}`, background: '#fff',
+            color: C.red, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
           }}>✕</button>
         )}
       </div>
@@ -119,6 +127,7 @@ function DateRangeBar({ preset, custom, applyPreset, applyCustom }) {
 
 
 export default function Dashboard() {
+  const isMobile = useIsMobile()
   const { preset, custom, range, grain, applyPreset, applyCustom } = useDateRange('all')
 
   const [metrics, setMetrics] = useState(null)
@@ -222,7 +231,8 @@ export default function Dashboard() {
       <AuditTodos />
 
       {/* Global sticky date-range filter — controls every tile + chart */}
-      <DateRangeBar preset={preset} custom={custom} applyPreset={applyPreset} applyCustom={applyCustom} />
+      <DateRangeBar preset={preset} custom={custom}
+        applyPreset={applyPreset} applyCustom={applyCustom} />
 
       {/* ── RZR side — the customer journey (upload → we pay them 97%) ── */}
       <SectionHeader title="RZR — Customer Side" hint="invoices RZR uploads, through to us paying their 97% advance" />
@@ -263,27 +273,28 @@ export default function Dashboard() {
           value={metricsLoading ? loadingTile : fmt(m.total_profit)} sub={`${ratePct}% × closed (Ryder-paid)`} />
       </Grid>
 
-      {/* ── Section 3: Charts ── */}
-      <SectionHeader title="Charts" hint="all series pull live from the selected range" />
-      {metricsLoading ? (
-        <Card><div style={{ padding: 40, textAlign: 'center', color: C.textMut, fontSize: 13 }}>Loading charts…</div></Card>
-      ) : (
-        <Grid cols={2} tabletCols={1} mobileCols={1} gap={14}>
+      {/* ── Section 3: Volume chart (left) + Operational Metrics stacked (right) ── */}
+      <SectionHeader title="Charts & Operational Metrics" hint="invoice volume · cycle timing — spot slow stages and slow payers" />
+      <div style={{
+        display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 2fr) minmax(260px, 1fr)',
+        gap: 14, marginBottom: 26, alignItems: 'stretch',
+      }}>
+        {metricsLoading ? (
+          <Card><div style={{ padding: 40, textAlign: 'center', color: C.textMut, fontSize: 13 }}>Loading charts…</div></Card>
+        ) : (
           <VolumeChart data={volume} />
-          <PipelineChart metrics={m} />
-        </Grid>
-      )}
-
-      {/* ── Section 4: Operational Metrics ── */}
-      <SectionHeader title="Operational Metrics" hint="cycle timing — spot slow stages and slow payers" />
-      <Grid cols={3} tabletCols={3} mobileCols={1} gap={11} style={{ marginBottom: 26 }}>
-        <KpiCard label="Avg Days to Advance" party="RZR" borderColor="#0369a1"
-          value={metricsLoading ? loadingTile : days(m.avg_days_to_advance)} sub="RZR upload → advance paid" />
-        <KpiCard label="Avg Days to Ryder Payment" party="Ryder" borderColor="#7c3aed"
-          value={metricsLoading ? loadingTile : days(m.avg_days_to_ryder_payment)} sub="submitted to Ryder → collected" />
-        <KpiCard label="Open / In-Pipeline Count" party="RZR" borderColor={C.primary}
-          value={metricsLoading ? loadingTile : num(m.active_invoice_count)} sub="not yet closed — matches Open tile above" />
-      </Grid>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+          {[
+            <KpiCard key="adv" label="Avg Days to Advance" party="RZR" borderColor="#0369a1"
+              value={metricsLoading ? loadingTile : days(m.avg_days_to_advance)} sub="RZR upload → advance paid" />,
+            <KpiCard key="ryd" label="Avg Days to Ryder Payment" party="Ryder" borderColor="#7c3aed"
+              value={metricsLoading ? loadingTile : days(m.avg_days_to_ryder_payment)} sub="submitted to Ryder → collected" />,
+            <KpiCard key="open" label="Open / In-Pipeline Count" party="RZR" borderColor={C.primary}
+              value={metricsLoading ? loadingTile : num(m.active_invoice_count)} sub="not yet closed — matches Open tile above" />,
+          ].map(card => <div key={card.key} style={{ flex: 1, display: 'grid' }}>{card}</div>)}
+        </div>
+      </div>
 
       {/* Needs Attention — ONLY overdue-with-Ryder invoices (due payments). */}
       {(() => { const allAlerts = overdueAlerts; return (
