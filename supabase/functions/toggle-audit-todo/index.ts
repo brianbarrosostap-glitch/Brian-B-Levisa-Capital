@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
     if (upErr || !todo) return json({ error: upErr?.message || 'To-do not found' }, 404)
 
     const subject = todo.kind === 'cheque'
-      ? `cheque to-do ${todo.cheque_id}`
+      ? `cheque #${todo.check_number || todo.cheque_id}`
       : `advance ADV-${String(todo.advance_number).padStart(4, '0')}`
 
     await service.from('audit_logs').insert({

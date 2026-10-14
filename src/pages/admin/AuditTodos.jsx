@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Check, ExternalLink, Landmark, Banknote } from 'lucide-react'
+import { Check, ExternalLink, Landmark, Banknote, ChevronDown, ChevronUp } from 'lucide-react'
 import { C } from '../../tokens'
 import { useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
@@ -8,21 +8,63 @@ const fmt = n => n == null ? '—' : '$' + Number(n).toLocaleString('en-US', { m
 const fmtAdv = n => 'ADV-' + String(n).padStart(4, '0')
 const fmtDate = d => d ? new Date(d).toLocaleDateString() : '—'
 
+// One item per physical cheque: merge cheque to-dos sharing a check_number.
+// (The DB already does this after migration 20261014000001 — this is a
+// safety net so duplicates never show, e.g. before that migration runs.)
+// n8n repeats the full cheque amount on each row, so the amount is taken once.
+function groupCheques(todos) {
+  const out = []
+  const byNumber = new Map()
+  for (const t of todos) {
+    if (t.kind !== 'cheque' || !t.check_number) { out.push(t); continue }
+    const g = byNumber.get(t.check_number)
+    if (!g) {
+      const item = { ...t, members: [t] }
+      byNumber.set(t.check_number, item)
+      out.push(item)
+      continue
+    }
+    g.members.push(t)
+    g.done = g.members.every(m => m.done)
+    g.cheque_amount = Math.max(Number(g.cheque_amount || 0), Number(t.cheque_amount || 0)) || g.cheque_amount
+    const nums = new Set(g.members.flatMap(m => (m.cheque_invoice_numbers || '').split(', ').filter(Boolean)))
+    g.cheque_invoice_numbers = [...nums].join(', ')
+    if (!t.cheque_lines) g.cheque_line_count = Math.max(g.cheque_line_count || 0, nums.size)
+  }
+  return out
+}
+
+// Invoices a cheque pays → [{ n, amt? }]. Uses the per-invoice lines
+// ("22156749: $1,234.56, …") when the view provides them, else bare numbers.
+function chequeInvoices(todo) {
+  if (todo.cheque_lines) {
+    return todo.cheque_lines.split(', ').map(l => {
+      const [n, amt] = l.split(': ')
+      return { n, amt }
+    })
+  }
+  return (todo.cheque_invoice_numbers || '').split(', ').filter(Boolean).map(n => ({ n }))
+}
+
+const metaText = { fontSize: 11.5, color: C.textSm, whiteSpace: 'nowrap' }
+const Dot = () => <span style={{ color: C.borderMd }}>•</span>
+
 /* ── One checkable row ── */
 function TodoRow({ todo, busy, onToggle }) {
-  const isCheque = todo.kind === 'cheque'
-  const title  = isCheque ? `Cheque #${todo.check_number || '(unreadable)'}` : fmtAdv(todo.advance_number)
-  const amount = isCheque ? todo.cheque_amount : todo.advance_total
-  const detail = isCheque
-    ? [`Received ${fmtDate(todo.cheque_received_at)}`, todo.cheque_invoice_numbers ? `Inv ${todo.cheque_invoice_numbers}` : 'No invoice matched']
-    : [`${todo.advance_invoice_count || 0} invoice${todo.advance_invoice_count === 1 ? '' : 's'}`,
-       todo.advance_client_name,
-       todo.advance_paid_count > 0 ? `Paid ${fmtDate(todo.advance_paid_at)}` : 'Not marked paid yet']
+  const [open, setOpen] = useState(false)
+  const isCheque  = todo.kind === 'cheque'
+  const title     = isCheque ? `Cheque #${todo.check_number || '(unreadable)'}` : fmtAdv(todo.advance_number)
+  const amount    = isCheque ? todo.cheque_amount : todo.advance_total
   const compareTo = isCheque ? 'bank deposit' : 'bank transfer to RZR'
+
+  const invoices = isCheque ? chequeInvoices(todo) : []
+  const hasTotal = isCheque && todo.cheque_lines && todo.cheque_invoice_total != null
+  const mismatch = hasTotal && todo.cheque_amount != null
+    && Math.abs(Number(todo.cheque_amount) - Number(todo.cheque_invoice_total)) >= 0.01
 
   return (
     <div style={{
-      display: 'flex', alignItems: 'flex-start', gap: 11, padding: '10px 12px',
+      display: 'flex', alignItems: 'flex-start', gap: 12, padding: '11px 14px',
       borderBottom: `1px solid ${C.border}`, opacity: busy ? 0.5 : 1,
       background: todo.done ? '#fafbfc' : '#fff',
     }}>
@@ -38,31 +80,89 @@ function TodoRow({ todo, busy, onToggle }) {
       </button>
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+        {/* Line 1 — identifier + amount */}
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
           <span style={{
             fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: C.text,
             textDecoration: todo.done ? 'line-through' : 'none',
           }}>{title}</span>
-          <span style={{ fontWeight: 800, fontSize: 14, color: todo.done ? C.textMut : C.primary, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+          <span style={{ fontWeight: 800, fontSize: 14.5, color: todo.done ? C.textMut : C.primary, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
             {fmt(amount)}
           </span>
         </div>
-        <div style={{ fontSize: 11.5, color: C.textSm, marginTop: 2, display: 'flex', flexWrap: 'wrap', gap: '2px 10px' }}>
-          {detail.filter(Boolean).map(d => <span key={d}>{d}</span>)}
-          {isCheque && todo.cheque_drive_url && (
-            <a href={todo.cheque_drive_url} target="_blank" rel="noreferrer"
-              style={{ color: C.primary, display: 'inline-flex', alignItems: 'center', gap: 3, textDecoration: 'none', fontWeight: 600 }}>
-              View cheque <ExternalLink size={11} />
-            </a>
+
+        {/* Line 2 — compact meta */}
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 8px', marginTop: 4 }}>
+          {isCheque ? (
+            <>
+              <span style={metaText}>Received {fmtDate(todo.cheque_received_at)}</span>
+              <Dot />
+              {invoices.length === 0 ? (
+                <span style={{ ...metaText, color: C.amber, fontWeight: 600 }}>No invoice matched</span>
+              ) : invoices.length === 1 ? (
+                <span style={metaText}>Inv <span style={{ fontFamily: 'monospace' }}>{invoices[0].n}</span></span>
+              ) : (
+                <button type="button" onClick={() => setOpen(o => !o)} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 8px',
+                  borderRadius: 9999, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                  border: `1px solid ${mismatch ? C.red : C.border}`,
+                  background: mismatch ? C.redLt : '#f1f5f9', color: mismatch ? C.red : C.textSm,
+                }}>
+                  {mismatch && '⚠ '}{invoices.length} invoices
+                  {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                </button>
+              )}
+              {todo.cheque_drive_url && (
+                <>
+                  <Dot />
+                  <a href={todo.cheque_drive_url} target="_blank" rel="noreferrer"
+                    style={{ ...metaText, color: C.primary, display: 'inline-flex', alignItems: 'center', gap: 3, textDecoration: 'none', fontWeight: 600 }}>
+                    View cheque <ExternalLink size={11} />
+                  </a>
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              <span style={metaText}>{todo.advance_invoice_count || 0} invoice{todo.advance_invoice_count === 1 ? '' : 's'}</span>
+              {todo.advance_client_name && <><Dot /><span style={metaText}>{todo.advance_client_name}</span></>}
+              <Dot />
+              {todo.advance_paid_count > 0
+                ? <span style={metaText}>Paid {fmtDate(todo.advance_paid_at)}</span>
+                : <span style={{ ...metaText, color: C.amber, fontWeight: 600 }}>Not marked paid yet</span>}
+            </>
           )}
         </div>
-        {todo.done ? (
-          <div style={{ fontSize: 11, color: C.primary, marginTop: 3, fontWeight: 600 }}>
-            ✓ Verified {fmtDate(todo.done_at)}{todo.done_by_name ? ` by ${todo.done_by_name}` : ''}
+
+        {/* Expanded invoice list (multi-invoice cheques) */}
+        {open && invoices.length > 1 && (
+          <div style={{ marginTop: 8, border: `1px solid ${C.border}`, borderRadius: 8, background: '#f8fafb', overflow: 'hidden' }}>
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+              gap: '2px 14px', padding: '8px 10px', maxHeight: 150, overflowY: 'auto',
+            }}>
+              {invoices.map(({ n, amt }) => (
+                <div key={n} style={{ display: 'flex', justifyContent: 'space-between', gap: 6, fontSize: 11.5, padding: '2px 0' }}>
+                  <span style={{ fontFamily: 'monospace', color: C.text }}>{n}</span>
+                  {amt && <span style={{ color: C.textSm, fontVariantNumeric: 'tabular-nums' }}>{amt}</span>}
+                </div>
+              ))}
+            </div>
+            {hasTotal && (
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', padding: '6px 10px', fontSize: 11.5, fontWeight: 700,
+                borderTop: `1px solid ${C.border}`, background: mismatch ? C.redLt : '#f0faf5', color: mismatch ? C.red : C.primary,
+              }}>
+                <span>Invoices total {mismatch ? '— differs from cheque' : '✓ matches cheque'}</span>
+                <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(todo.cheque_invoice_total)}</span>
+              </div>
+            )}
           </div>
-        ) : (
-          <div style={{ fontSize: 11, color: C.textMut, marginTop: 3 }}>
-            Compare against the actual {compareTo}
+        )}
+
+        {todo.done && (
+          <div style={{ fontSize: 11, color: C.primary, marginTop: 4, fontWeight: 600 }}>
+            ✓ Verified {fmtDate(todo.done_at)}{todo.done_by_name ? ` by ${todo.done_by_name}` : ''}
           </div>
         )}
       </div>
@@ -121,10 +221,13 @@ export default function AuditTodos() {
     return () => window.removeEventListener('focus', onFocus)
   }, [])
 
+  // A grouped cheque item carries `ids` (all its underlying to-dos) — flip each.
   const toggle = async (todo) => {
     setBusyId(todo.id)
+    const target = !todo.done
+    const ids = (todo.members || [todo]).filter(m => m.done !== target).map(m => m.id)
     try {
-      await callFunction('toggle-audit-todo', { todo_id: todo.id, done: !todo.done })
+      for (const id of ids) await callFunction('toggle-audit-todo', { todo_id: id, done: target })
       await load()
     } catch (e) {
       console.error(e)
@@ -133,11 +236,12 @@ export default function AuditTodos() {
     setBusyId(null)
   }
 
-  const shown    = todos.filter(t => (view === 'done') === t.done)
+  const items    = groupCheques(todos)
+  const shown    = items.filter(t => (view === 'done') === t.done)
   const cheques  = shown.filter(t => t.kind === 'cheque')
   const advances = shown.filter(t => t.kind === 'advance')
-  const openCount = todos.filter(t => !t.done).length
-  const doneCount = todos.length - openCount
+  const openCount = items.filter(t => !t.done).length
+  const doneCount = items.length - openCount
 
   const tabBtn = (key, label, count) => {
     const on = view === key

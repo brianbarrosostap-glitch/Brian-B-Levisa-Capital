@@ -73,6 +73,7 @@ The `ingest-*` functions verify the caller holds the **service_role** key. They 
 ### Audit to-dos + cheque search (added 2026-10-13)
 - **`public.audit_todos`** (admin-only RLS) + view `v_audit_todos` (`security_invoker`, live amounts). Migration `20261013000002_audit_todos.sql` — run AFTER `…000001_advance_number.sql`.
 - To-dos are created by DB triggers only: `trg_cheque_todo` (one per inserted cheque → compare to bank deposit) and inside `assign_advance_number()` (one per new advance number → compare to bank transfer). n8n needs no changes.
+- **One cheque to-do per `check_number`** (migration `20261014000001_cheque_todo_per_cheque.sql`): n8n may store one `cheques` row per invoice line of the same physical cheque; `audit_todos.check_number` is unique. **n8n repeats the FULL cheque amount on every row** — so `v_audit_todos.cheque_amount` = `max(amount)`, never a sum; `cheque_lines`/`cheque_invoice_total` come from the matched `invoices` rows. `AuditTodos.jsx` also groups by `check_number` client-side as a safety net (toggle flips every member). Cheques with no readable number get one to-do each.
 - Checked off via edge function **`toggle-audit-todo`** (admin JWT, `{todo_id, done, note?}`) → writes `audit_logs`. UI: `src/pages/admin/AuditTodos.jsx` at the top of Dashboard (not date-filtered).
 - Master search also matches **cheque numbers** (separate `cheques` query, mapped via `cheque_invoices` + `cheques.invoice_id`); there's a Cheque # column.
 
