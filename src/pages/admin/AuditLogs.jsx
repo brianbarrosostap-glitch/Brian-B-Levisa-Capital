@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { C } from '../../tokens'
 import { Card, Badge, SearchBar, TH, TD, useIsMobile } from '../../components/ui'
 import { supabase } from '../../lib/supabase'
+import { usePersistentState } from '../../hooks/usePersistentState'
 
 const ACTION_COLOUR = {
   insert:        { bg: '#dcfce7', text: '#15803d' },
@@ -22,7 +23,7 @@ const ActionPill = ({ action }) => {
 export default function AuditLogs() {
   const isMobile = useIsMobile()
   const [logs, setLogs]       = useState([])
-  const [search, setSearch]   = useState('')
+  const [search, setSearch]   = usePersistentState('admin.auditlogs.search', '')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { fetchLogs() }, [])

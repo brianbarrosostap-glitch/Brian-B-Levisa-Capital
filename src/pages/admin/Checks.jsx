@@ -3,6 +3,7 @@ import { ExternalLink } from 'lucide-react'
 import { C } from '../../tokens'
 import { Card, SearchBar, TH, TD, useIsMobile } from '../../components/ui'
 import { supabase } from '../../lib/supabase'
+import { usePersistentState } from '../../hooks/usePersistentState'
 
 const fmt = n => n == null ? '—' : '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -44,7 +45,7 @@ const DriveLink = ({ url }) => (
 export default function Checks() {
   const isMobile = useIsMobile()
   const [checks, setChecks]   = useState([])
-  const [search, setSearch]   = useState('')
+  const [search, setSearch]   = usePersistentState('admin.cheques.search', '')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { fetchChecks() }, [])

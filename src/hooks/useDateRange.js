@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react'
+import { useMemo } from 'react'
+import { usePersistentState } from './usePersistentState'
 
 // Shared date-range state for the whole dashboard. Every query consumes
 // the SAME { start, end } so no two metrics can drift out of sync.
@@ -39,8 +40,8 @@ const rangeForPreset = (key) => {
 }
 
 export function useDateRange(initialPreset = 'all') {
-  const [preset, setPreset] = useState(initialPreset)        // active preset key, or 'custom'
-  const [custom, setCustom] = useState({ start: '', end: '' })
+  const [preset, setPreset] = usePersistentState('admin.dashboard.preset', initialPreset)        // active preset key, or 'custom'
+  const [custom, setCustom] = usePersistentState('admin.dashboard.custom', { start: '', end: '' })
 
   const range = useMemo(() => {
     if (preset === 'custom') {

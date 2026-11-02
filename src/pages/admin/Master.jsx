@@ -4,6 +4,7 @@ import { C, ROW_BG, adminStatus } from '../../tokens'
 import { Card, Btn, Badge, Tabs, SearchBar, FilterChip, KebabMenu, TH, TD, Modal, ModalBody, ModalFooter, useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
 import InvoiceDetailModal from './InvoiceDetailModal'
+import { usePersistentState } from '../../hooks/usePersistentState'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtAdv = n => n == null ? '—' : 'ADV-' + String(n).padStart(4, '0')
@@ -217,9 +218,9 @@ function StatusActionModal({ inv, action, onClose, onDone }) {
 
 export default function Master() {
   const isMobile = useIsMobile()
-  const [tab, setTab]           = useState('active')
-  const [search, setSearch]     = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
+  const [tab, setTab]           = usePersistentState('admin.master.tab', 'active')
+  const [search, setSearch]     = usePersistentState('admin.master.search', '')
+  const [statusFilter, setStatusFilter] = usePersistentState('admin.master.status', '')
   const [invoices, setInvoices] = useState([])
   const [pendingBatches, setPendingBatches] = useState([])
   const [activeBatch, setActiveBatch] = useState(null)   // the batch being reviewed
@@ -295,7 +296,11 @@ export default function Master() {
   // Void + Cancelled are merged into one "Cancelled" bucket (both are dead invoices).
   const cancelled = invoices.filter(i => ['Void','Cancelled'].includes(i.status))
 
+  // "ADV-33" always means an advance. A bare short number ("33") also does,
+  // when that advance exists — invoice/PO numbers are much longer.
+  const bareNum  = /^\d{1,4}$/.test(search.trim()) ? Number(search.trim()) : null
   const advQuery = parseAdvQuery(search)
+    ?? (bareNum != null && invoices.some(i => i.advance_number === bareNum) ? bareNum : null)
   const list = (tab === 'active' ? active : cancelled).filter(i => {
     const q = search.toLowerCase()
     const matchQ = advQuery != null
@@ -329,7 +334,7 @@ export default function Master() {
 
       <Card noPad>
         <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <SearchBar placeholder="Search invoice #, PO, unit, cheque #, or ADV-12…" value={search} onChange={setSearch} />
+          <SearchBar placeholder="Search invoice #, PO, unit, cheque #, or advance # (e.g. 33)…" value={search} onChange={setSearch} />
           <FilterChip label="Status" options={statuses} value={statusFilter} onChange={setStatusFilter} />
           {(search || statusFilter) && (
             <button type="button" onClick={() => { setSearch(''); setStatusFilter('') }}

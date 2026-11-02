@@ -3,6 +3,8 @@ import { Check, ExternalLink, Landmark, Banknote, ChevronDown, ChevronUp, MailWa
 import { C } from '../../tokens'
 import { useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
+import InvoiceDetailModal from './InvoiceDetailModal'
+import { usePersistentState } from '../../hooks/usePersistentState'
 
 const fmt = n => n == null ? '—' : '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtAdv = n => 'ADV-' + String(n).padStart(4, '0')
@@ -13,7 +15,9 @@ const fmtDate = d => d ? new Date(d).toLocaleDateString() : '—'
 // (n8n resends every 48h and increments invoices.resubmit_count.)
 const UNCONF_MIN_ATTEMPTS = 3
 const UNCONF_MIN_DAYS     = 7
-const AWAITING_RYDER      = ['Submitted to Ryder', 'Resubmitted']
+// 'Advance Paid' = RZR was paid but the invoice was never marked sent to Ryder
+// (no ryder_submitted_at) — it can sit unnoticed, so it counts as waiting too.
+const AWAITING_RYDER      = ['Advance Paid', 'Submitted to Ryder', 'Resubmitted']
 const daysSince = d => d ? Math.floor((Date.now() - new Date(d).getTime()) / 86400000) : null
 
 // One item per physical cheque: merge cheque to-dos sharing a check_number.
@@ -57,8 +61,17 @@ function chequeInvoices(todo) {
 const metaText = { fontSize: 11.5, color: C.textSm, whiteSpace: 'nowrap' }
 const Dot = () => <span style={{ color: C.borderMd }}>•</span>
 
+// Invoice number that opens the invoice detail modal.
+const InvLink = ({ n, onOpen, style }) => (
+  <button type="button" onClick={() => onOpen({ number: n })} title="Open invoice"
+    style={{ padding: 0, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'monospace',
+      color: C.primary, textDecoration: 'underline', textUnderlineOffset: 2, fontSize: 'inherit', ...style }}>
+    {n}
+  </button>
+)
+
 /* ── One checkable row ── */
-function TodoRow({ todo, selected, busy, onSelect }) {
+function TodoRow({ todo, selected, busy, onSelect, onOpenInvoice }) {
   const [open, setOpen] = useState(false)
   const isCheque  = todo.kind === 'cheque'
   const isUnconf  = todo.kind === 'unconfirmed'
@@ -93,10 +106,18 @@ function TodoRow({ todo, selected, busy, onSelect }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         {/* Line 1 — identifier + amount */}
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
-          <span style={{
-            fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: C.text,
-            textDecoration: todo.done ? 'line-through' : 'none',
-          }}>{title}</span>
+          {isUnconf ? (
+            <button type="button" onClick={() => onOpenInvoice({ id: todo.invoice_id })} title="Open invoice" style={{
+              padding: 0, border: 'none', background: 'none', cursor: 'pointer',
+              fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: C.primary,
+              textDecoration: todo.done ? 'line-through' : 'underline', textUnderlineOffset: 2,
+            }}>{title}</button>
+          ) : (
+            <span style={{
+              fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: C.text,
+              textDecoration: todo.done ? 'line-through' : 'none',
+            }}>{title}</span>
+          )}
           <span style={{ fontWeight: 800, fontSize: 14.5, color: todo.done ? C.textMut : C.primary, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
             {fmt(amount)}
           </span>
@@ -106,7 +127,10 @@ function TodoRow({ todo, selected, busy, onSelect }) {
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 8px', marginTop: 4 }}>
           {isUnconf ? (
             <>
-              <span style={metaText}>Sent {todo.waited_days != null ? `${todo.waited_days} days ago` : '—'}</span>
+              <span style={metaText}>
+                {todo.status === 'Advance Paid' ? 'Advance paid' : 'Sent'} {todo.waited_days != null ? `${todo.waited_days} days ago` : '—'}
+              </span>
+              {todo.status === 'Advance Paid' && <><Dot /><span style={{ ...metaText, color: C.red, fontWeight: 600 }}>Not sent to Ryder</span></>}
               <Dot />
               <span style={{ ...metaText, color: todo.resubmit_count >= UNCONF_MIN_ATTEMPTS ? C.red : C.textSm, fontWeight: 600 }}>
                 Resent {todo.resubmit_count || 0}×
@@ -130,7 +154,7 @@ function TodoRow({ todo, selected, busy, onSelect }) {
               {invoices.length === 0 ? (
                 <span style={{ ...metaText, color: C.amber, fontWeight: 600 }}>No invoice matched</span>
               ) : invoices.length === 1 ? (
-                <span style={metaText}>Inv <span style={{ fontFamily: 'monospace' }}>{invoices[0].n}</span></span>
+                <span style={metaText}>Inv <InvLink n={invoices[0].n} onOpen={onOpenInvoice} /></span>
               ) : (
                 <button type="button" onClick={() => setOpen(o => !o)} style={{
                   display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 8px',
@@ -173,7 +197,7 @@ function TodoRow({ todo, selected, busy, onSelect }) {
             }}>
               {invoices.map(({ n, amt }) => (
                 <div key={n} style={{ display: 'flex', justifyContent: 'space-between', gap: 6, fontSize: 11.5, padding: '2px 0' }}>
-                  <span style={{ fontFamily: 'monospace', color: C.text }}>{n}</span>
+                  <InvLink n={n} onOpen={onOpenInvoice} />
                   {amt && <span style={{ color: C.textSm, fontVariantNumeric: 'tabular-nums' }}>{amt}</span>}
                 </div>
               ))}
@@ -201,7 +225,7 @@ function TodoRow({ todo, selected, busy, onSelect }) {
 }
 
 /* ── One column (cheques / advances / unconfirmed) ── */
-function TodoColumn({ icon: Icon, title, party, hint, items, selected, busy, onSelect, onSelectAll, emptyText }) {
+function TodoColumn({ icon: Icon, title, party, hint, items, selected, busy, onSelect, onSelectAll, onOpenInvoice, emptyText }) {
   const allOn  = items.length > 0 && items.every(t => selected.has(t.id))
   const someOn = !allOn && items.some(t => selected.has(t.id))
   return (
@@ -229,7 +253,7 @@ function TodoColumn({ icon: Icon, title, party, hint, items, selected, busy, onS
       <div style={{ maxHeight: 320, overflowY: 'auto' }}>
         {items.length === 0
           ? <div style={{ padding: 18, textAlign: 'center', fontSize: 12.5, color: C.textMut }}>{emptyText}</div>
-          : items.map(t => <TodoRow key={t.id} todo={t} selected={selected.has(t.id)} busy={busy} onSelect={onSelect} />)}
+          : items.map(t => <TodoRow key={t.id} todo={t} selected={selected.has(t.id)} busy={busy} onSelect={onSelect} onOpenInvoice={onOpenInvoice} />)}
       </div>
     </div>
   )
@@ -239,7 +263,7 @@ export default function AuditTodos() {
   const isMobile = useIsMobile()
   const [todos, setTodos]   = useState([])
   const [unconfirmed, setUnconfirmed] = useState([])
-  const [view, setView]     = useState('open')   // 'open' | 'done'
+  const [view, setView]     = usePersistentState('admin.todos.view', 'open')   // 'open' | 'done'
   const [error, setError]   = useState('')
   const [notice, setNotice] = useState('')
   const [loading, setLoading] = useState(true)
@@ -247,6 +271,7 @@ export default function AuditTodos() {
   // admin presses Submit in the action bar — then all selected items are
   // saved together and move out of the to-do list.
   const [selected, setSelected]     = useState(() => new Set())
+  const [openInv, setOpenInv]       = useState(null)   // { id } for InvoiceDetailModal
   const [submitting, setSubmitting] = useState(false)
   const submittingRef = useRef(false)   // read by the focus listener (state would be a stale closure)
   const loadSeq = useRef(0)
@@ -279,8 +304,9 @@ export default function AuditTodos() {
   const loadUnconfirmed = async (seq) => {
     const [{ data: invs, error: invErr }, { data: ticks }] = await Promise.all([
       supabase.from('invoices')
-        .select('id, invoice_number, po_number, invoice_amount, status, advance_number, resubmit_count, ryder_submitted_at, last_resubmitted_at, created_at, drive_file_url')
-        .in('status', AWAITING_RYDER),
+        .select('id, invoice_number, po_number, invoice_amount, status, advance_number, resubmit_count, ryder_submitted_at, advance_paid_at, last_resubmitted_at, created_at, drive_file_url')
+        .in('status', AWAITING_RYDER)
+        .is('ryder_confirmed_at', null),
       supabase.from('audit_todos')
         .select('id, invoice_id, done, done_at, done_by_profile:profiles(full_name)')
         .eq('kind', 'unconfirmed'),
@@ -289,7 +315,7 @@ export default function AuditTodos() {
     if (invErr) { console.error('unconfirmed invoices:', invErr); return }
     const tickBy = Object.fromEntries((ticks || []).map(t => [t.invoice_id, t]))
     setUnconfirmed((invs || [])
-      .map(i => ({ ...i, waited_days: daysSince(i.ryder_submitted_at || i.created_at) }))
+      .map(i => ({ ...i, waited_days: daysSince(i.ryder_submitted_at || i.advance_paid_at || i.created_at) }))
       .filter(i => (i.resubmit_count || 0) >= UNCONF_MIN_ATTEMPTS || (i.waited_days ?? 0) >= UNCONF_MIN_DAYS)
       .sort((a, b) => (b.waited_days ?? 0) - (a.waited_days ?? 0))
       .map(i => {
@@ -365,7 +391,16 @@ export default function AuditTodos() {
   }
 
   const n = selectedItems.length
-  const colProps = { selected, busy: submitting, onSelect: toggleSelect, onSelectAll: selectAll }
+  // Cheque lines only carry the invoice NUMBER — look up its id to open the modal.
+  const openInvoice = async ({ id, number }) => {
+    if (!id) {
+      const { data } = await supabase.from('invoices').select('id').eq('invoice_number', number).limit(1).maybeSingle()
+      id = data?.id
+    }
+    if (id) setOpenInv({ id })
+  }
+
+  const colProps = { selected, busy: submitting, onSelect: toggleSelect, onSelectAll: selectAll, onOpenInvoice: openInvoice }
 
   return (
     <div style={{
@@ -437,6 +472,7 @@ export default function AuditTodos() {
           </div>
         </div>
       )}
+      {openInv && <InvoiceDetailModal invoice={openInv} onClose={() => setOpenInv(null)} onRefresh={load} />}
     </div>
   )
 }
