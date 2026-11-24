@@ -95,7 +95,11 @@ The `ingest-*` functions verify the caller holds the **service_role** key. They 
 - **PROD** `fhmdtbvpjqftwsbdihcu` ↔ `main`. Migrations are applied by hand (psql / SQL editor) — DEV first, PROD at go-live. `deploy-functions.ps1` defaults to DEV; `-Target prod` asks for confirmation.
 - Function secrets are listed (names only) in `supabase/functions/.env.example`. DEV-only safety secrets: `EMAIL_ALLOWED_DOMAINS`, `EMAIL_REDIRECT_TO`, `DISABLE_N8N_WEBHOOKS` — **never set on PROD**. DEV `app_settings` use test recipients (RZR → divyanshu.sharma@growwstacks.com, Ryder → kapil.goswami@growwstacks.com) and the subject phrase "DEV Advance Approval for" (live n8n reacts to ANY "Payment Request for" email in brianbarroso.stap@gmail.com).
 
-### Migrations (20261124000001…06 + the never-applied-to-prod 20260617000005)
+### Go-live
+Step-by-step prod cutover: **`docs/GO_LIVE.md`** (planned after 3–4 days of preview testing from 2026-11-24).
+
+### Migrations (20261124000001…07 + the never-applied-to-prod 20260617000005)
+`…000007_fix_po_letter_o` converts the 249 prod PO numbers stored as "O245…" to digits.
 `app_settings` (addresses, timings, `automation` switch per job: off|dry_run|live) · `email_outbox` (all email; unique `dedupe_key`) · `job_runs` · `deleted_invoices` (+ backfill from audit_logs, `restore_deleted_invoice()`) · Storage buckets `invoices` (`<client_id>/…`, customers own folder) + `cheques` (admin) · `invoices.storage_path/pdf_path/file_sha256/advance_agreed_at` (+ trigger stamping advance_agreed_at) · `cheques.storage_path/check_date/batch_number`, `cheque_invoices.amount` per line · `document_jobs` (uploads) · `processed_emails` · pg_cron + `invoke_edge_function()` (Vault: `project_url`, `internal_secret`). **20260617000005 (cheque-only needs_attention) was never applied to PROD** — run it at go-live (enum step first).
 
 ### Edge functions (shared code in `supabase/functions/_shared/`)
