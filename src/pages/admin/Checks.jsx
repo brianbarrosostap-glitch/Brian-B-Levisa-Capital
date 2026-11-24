@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react'
-import { ExternalLink } from 'lucide-react'
+import { Upload } from 'lucide-react'
 import { C } from '../../tokens'
-import { Card, SearchBar, TH, TD, useIsMobile } from '../../components/ui'
+import { Card, Btn, SearchBar, TH, TD, useIsMobile } from '../../components/ui'
+import FileLink from '../../components/FileLink'
+import UploadDocumentModal from '../../components/UploadDocumentModal'
+import { chequeFileRef } from '../../lib/files'
 import { supabase } from '../../lib/supabase'
 import { usePersistentState } from '../../hooks/usePersistentState'
 
@@ -24,29 +27,12 @@ const CheckBadge = ({ status }) => {
   )
 }
 
-const DriveLink = ({ url }) => (
-  <a
-    href={url || '#'}
-    target={url ? '_blank' : undefined}
-    rel="noreferrer"
-    onClick={!url ? e => e.preventDefault() : undefined}
-    style={{
-      display: 'inline-flex', alignItems: 'center', gap: 4,
-      background: '#eff6ff', border: `1px solid ${C.border}`,
-      borderRadius: 6, color: url ? '#1e40af' : C.textMut, fontSize: 11,
-      padding: '2px 7px', textDecoration: 'none',
-      cursor: url ? 'pointer' : 'default', opacity: url ? 1 : 0.5,
-    }}
-  >
-    <ExternalLink size={9} /> View
-  </a>
-)
-
 export default function Checks() {
   const isMobile = useIsMobile()
   const [checks, setChecks]   = useState([])
   const [search, setSearch]   = usePersistentState('admin.cheques.search', '')
   const [loading, setLoading] = useState(true)
+  const [uploadOpen, setUploadOpen] = useState(false)
 
   useEffect(() => { fetchChecks() }, [])
 
@@ -57,7 +43,16 @@ export default function Checks() {
       .select('*')
       .order('received_at', { ascending: false })
     if (error) console.error('Failed to load cheques:', error)
-    if (data) setChecks(data)
+    if (data) {
+      // v_cheques was created with c.* before cheques.storage_path existed,
+      // so read the Storage path straight from the table and merge it in.
+      // A failure here only means older (Drive) links are shown.
+      const { data: paths, error: pErr } = await supabase
+        .from('cheques').select('id, storage_path').not('storage_path', 'is', null)
+      if (pErr) console.warn('cheques.storage_path not available:', pErr.message)
+      const byId = Object.fromEntries((paths || []).map(p => [p.id, p.storage_path]))
+      setChecks(data.map(c => ({ ...c, storage_path: c.storage_path || byId[c.id] || null })))
+    }
     setLoading(false)
   }
 
@@ -78,13 +73,16 @@ export default function Checks() {
       <Card noPad>
         <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <SearchBar placeholder="Search cheque #, conf #, invoice #…" value={search} onChange={setSearch} />
+          <div style={{ marginLeft: 'auto' }}>
+            <Btn onClick={() => setUploadOpen(true)}><Upload size={13} /> Upload cheque</Btn>
+          </div>
         </div>
 
         {loading ? (
           <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>Loading cheques…</div>
         ) : list.length === 0 ? (
           <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>
-            No cheques yet. They appear here as the Drive automation ingests them.
+            No cheques yet. Use “Upload cheque” to add one.
           </div>
         ) : isMobile ? (
           /* ── Mobile: stacked cards ── */
@@ -110,7 +108,7 @@ export default function Checks() {
                   </div>
                 ))}
                 <div style={{ marginTop: 8, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
-                  <DriveLink url={c.drive_file_url} />
+                  <FileLink fileRef={chequeFileRef(c)} />
                 </div>
               </div>
             ))}
@@ -142,7 +140,7 @@ export default function Checks() {
                   <TD mono>{c.ryder_conf_number || '—'}</TD>
                   <TD style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(c.amount)}</TD>
                   <TD style={{ textAlign: 'center' }}><CheckBadge status={c.status} /></TD>
-                  <TD style={{ textAlign: 'center' }}><DriveLink url={c.drive_file_url} /></TD>
+                  <TD style={{ textAlign: 'center' }}><FileLink fileRef={chequeFileRef(c)} /></TD>
                 </tr>
               ))}
             </tbody>
@@ -150,6 +148,12 @@ export default function Checks() {
           </div>
         )}
       </Card>
+
+      {uploadOpen && (
+        <UploadDocumentModal kind="cheque" role="admin"
+          onClose={() => setUploadOpen(false)}
+          onDone={fetchChecks} />
+      )}
     </div>
   )
 }

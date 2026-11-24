@@ -57,3 +57,7 @@ input, textarea, select {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #c4cdd8; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #8fa3b0; }
+
+/* Spinner used by FileLink / UploadDocumentModal (Lucide Loader2) */
+@keyframes lc-spin { to { transform: rotate(360deg); } }
+.lc-spin { animation: lc-spin 1s linear infinite; }

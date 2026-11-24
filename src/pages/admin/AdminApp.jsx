@@ -1,41 +1,77 @@
 import React, { useState, useEffect } from 'react'
-import { LayoutDashboard, ListOrdered, Receipt, ScrollText } from 'lucide-react'
+import { LayoutDashboard, ListOrdered, Receipt, ScrollText, FileSearch, Archive, Trash2, Bot } from 'lucide-react'
+import { C } from '../../tokens'
 import { Shell, Topbar, PageContent } from '../../components/ui'
 import NotificationBell from '../../components/NotificationBell'
 import InstallPWA from '../../components/InstallPWA'
+import { supabase } from '../../lib/supabase'
+import { REVIEW_JOB_STATUSES } from '../../lib/documentJobs'
 import Dashboard from './Dashboard'
 import Master from './Master'
 import Checks from './Checks'
 import AuditLogs from './AuditLogs'
+import UploadReview from './UploadReview'
+import PastInvoices from './PastInvoices'
+import DeletedInvoices from './DeletedInvoices'
+import Automation from './Automation'
 
 const NAV = [
-  { key: 'dashboard', label: 'Dashboard',  icon: LayoutDashboard },
-  { key: 'master',    label: 'Master',     icon: ListOrdered },
-  { key: 'cheques',   label: 'Cheques',    icon: Receipt },
-  { key: 'audit',     label: 'Audit Logs', icon: ScrollText },
+  { key: 'dashboard',  label: 'Dashboard',        icon: LayoutDashboard },
+  { key: 'master',     label: 'Master',           icon: ListOrdered },
+  { key: 'cheques',    label: 'Cheques',          icon: Receipt },
+  { key: 'review',     label: 'Upload Review',    icon: FileSearch },
+  { key: 'past',       label: 'Past Invoices',    icon: Archive },
+  { key: 'deleted',    label: 'Deleted Invoices', icon: Trash2 },
+  { key: 'automation', label: 'Automation',       icon: Bot },
+  { key: 'audit',      label: 'Audit Logs',       icon: ScrollText },
 ]
 
 const TITLES = {
-  dashboard: { title: 'Dashboard' },
-  master:    { title: 'Master', subtitle: 'All invoice records' },
-  cheques:   { title: 'Cheques', subtitle: 'Payment proof from Ryder (Drive)' },
-  audit:     { title: 'Audit Logs', subtitle: 'Who did what, when' },
+  dashboard:  { title: 'Dashboard' },
+  master:     { title: 'Master', subtitle: 'All invoice records' },
+  cheques:    { title: 'Cheques', subtitle: 'Payment proof from Ryder' },
+  review:     { title: 'Upload Review', subtitle: 'Uploads the portal could not read cleanly' },
+  past:       { title: 'Past Invoices', subtitle: 'Paid, void and cancelled' },
+  deleted:    { title: 'Deleted Invoices', subtitle: 'Removed from the portal — restorable' },
+  automation: { title: 'Automation', subtitle: 'Switches, settings, emails and job runs' },
+  audit:      { title: 'Audit Logs', subtitle: 'Who did what, when' },
 }
+
+const VALID = NAV.map(n => n.key)
+const REVIEW_POLL_MS = 30000
 
 export default function AdminApp({ user, onSignOut }) {
   // Persist the active tab so a refresh stays on the same screen.
-  const VALID = ['dashboard', 'master', 'cheques', 'audit']
   const [page, setPage] = useState(() => {
     const saved = localStorage.getItem('admin.page')
     return VALID.includes(saved) ? saved : 'dashboard'
   })
+  const [reviewCount, setReviewCount] = useState(null)
 
   useEffect(() => { localStorage.setItem('admin.page', page) }, [page])
+
+  // Live "Upload Review" badge: uploads needing review or that failed.
+  const fetchReviewCount = async () => {
+    const { count, error } = await supabase
+      .from('document_jobs')
+      .select('id', { count: 'exact', head: true })
+      .in('status', REVIEW_JOB_STATUSES)
+    if (!error) setReviewCount(count ?? 0)
+  }
+  useEffect(() => {
+    fetchReviewCount()
+    const t = setInterval(() => { if (!document.hidden) fetchReviewCount() }, REVIEW_POLL_MS)
+    return () => clearInterval(t)
+  }, [])
+  useEffect(() => { fetchReviewCount() }, [page])
+
+  const badges = { review: reviewCount }
 
   const NavItems = (
     <>
       {NAV.map(n => {
         const Icon = n.icon
+        const badge = badges[n.key]
         return (
           <button key={n.key} onClick={() => setPage(n.key)} style={{
             display: 'flex', alignItems: 'center', gap: 9, width: '100%',
@@ -47,6 +83,12 @@ export default function AdminApp({ user, onSignOut }) {
           }}>
             <Icon size={16} />
             <span style={{ flex: 1 }}>{n.label}</span>
+            {badge > 0 && (
+              <span style={{
+                background: C.red, color: C.card, borderRadius: 9999,
+                fontSize: 10, fontWeight: 700, padding: '1px 6px', minWidth: 18, textAlign: 'center',
+              }}>{badge}</span>
+            )}
           </button>
         )
       })}
@@ -82,10 +124,14 @@ export default function AdminApp({ user, onSignOut }) {
         <NotificationBell />
       </Topbar>
       <PageContent>
-        {page === 'dashboard' && <Dashboard />}
-        {page === 'master'    && <Master />}
-        {page === 'cheques'   && <Checks />}
-        {page === 'audit'     && <AuditLogs />}
+        {page === 'dashboard'  && <Dashboard />}
+        {page === 'master'     && <Master />}
+        {page === 'cheques'    && <Checks />}
+        {page === 'review'     && <UploadReview onChanged={fetchReviewCount} />}
+        {page === 'past'       && <PastInvoices />}
+        {page === 'deleted'    && <DeletedInvoices />}
+        {page === 'automation' && <Automation />}
+        {page === 'audit'      && <AuditLogs />}
       </PageContent>
     </Shell>
   )

@@ -1,47 +1,67 @@
 # ================================================================
 # deploy-functions.ps1
-# Deploys all 4 Supabase Edge Functions in one shot.
+# Deploys Supabase Edge Functions to DEV (default) or PROD.
 #
-# BEFORE RUNNING:
-#   1. Install the Supabase CLI:
-#        npm install -g supabase
-#   2. Log in:
-#        supabase login
-#   3. Replace YOUR_PROJECT_REF below with your actual project ref.
-#      Find it at: Dashboard → Project Settings → General → Reference ID
+#   .\deploy-functions.ps1                        # all functions -> DEV
+#   .\deploy-functions.ps1 send-emails            # one function  -> DEV
+#   .\deploy-functions.ps1 -Target prod           # all functions -> PROD (asks to confirm)
+#
+# Every folder under supabase/functions except _shared is a function.
+# verify_jwt per function comes from supabase/config.toml.
+#
+# BEFORE RUNNING: `supabase login` with the account that owns the project.
 # ================================================================
 
-$PROJECT_REF = "YOUR_PROJECT_REF"   # <-- change this
-
-if ($PROJECT_REF -eq "YOUR_PROJECT_REF") {
-    Write-Host "ERROR: Edit deploy-functions.ps1 and set your PROJECT_REF first." -ForegroundColor Red
-    exit 1
-}
-
-Write-Host "Linking project $PROJECT_REF ..." -ForegroundColor Cyan
-supabase link --project-ref $PROJECT_REF
-
-Write-Host ""
-Write-Host "Deploying Edge Functions ..." -ForegroundColor Cyan
-
-$functions = @(
-    "approve-batch",
-    "submit-advance-request",
-    "match-confirmation",
-    "mark-invoice-status",
-    "toggle-audit-todo"
+param(
+    [Parameter(Position = 0)]
+    [string[]]$Functions,
+    [ValidateSet('dev', 'prod')]
+    [string]$Target = 'dev',
+    [switch]$Yes
 )
 
-foreach ($fn in $functions) {
-    Write-Host "  → $fn" -ForegroundColor Yellow
+$REFS = @{
+    dev  = 'zwvjkhtehkpdjjrfyhhv'   # levisa dev  (git develop / Vercel Preview)
+    prod = 'fhmdtbvpjqftwsbdihcu'   # LIVE        (git main / Vercel Production)
+}
+$PROJECT_REF = $REFS[$Target]
+$fnRoot = Join-Path $PSScriptRoot 'supabase\functions'
+
+if (-not $Functions -or $Functions.Count -eq 0) {
+    $Functions = Get-ChildItem -Directory $fnRoot |
+        Where-Object { $_.Name -notlike '_*' } |
+        ForEach-Object { $_.Name } |
+        Sort-Object
+}
+
+Write-Host ""
+Write-Host "Target : $Target ($PROJECT_REF)" -ForegroundColor Cyan
+Write-Host "Deploy : $($Functions -join ', ')" -ForegroundColor Cyan
+
+if ($Target -eq 'prod' -and -not $Yes) {
+    $answer = Read-Host 'Deploying to PRODUCTION. Type PROD to continue'
+    if ($answer -ne 'PROD') { Write-Host 'Cancelled.'; exit 0 }
+}
+
+$failed = @()
+foreach ($fn in $Functions) {
+    if (-not (Test-Path (Join-Path $fnRoot $fn))) {
+        Write-Host "  SKIP: $fn (no such folder)" -ForegroundColor Yellow
+        continue
+    }
+    Write-Host "  -> $fn" -ForegroundColor Yellow
     supabase functions deploy $fn --project-ref $PROJECT_REF
     if ($LASTEXITCODE -ne 0) {
         Write-Host "  FAILED: $fn" -ForegroundColor Red
+        $failed += $fn
     } else {
         Write-Host "  OK: $fn" -ForegroundColor Green
     }
 }
 
 Write-Host ""
-Write-Host "Done. Functions live at:" -ForegroundColor Green
-Write-Host "  https://$PROJECT_REF.supabase.co/functions/v1/<function-name>"
+if ($failed.Count) {
+    Write-Host "Done with failures: $($failed -join ', ')" -ForegroundColor Red
+    exit 1
+}
+Write-Host "Done. Functions live at https://$PROJECT_REF.supabase.co/functions/v1/<name>" -ForegroundColor Green

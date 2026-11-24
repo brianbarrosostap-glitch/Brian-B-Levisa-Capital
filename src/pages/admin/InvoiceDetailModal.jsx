@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react'
-import { AlertTriangle, ExternalLink } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import { C, adminStatus } from '../../tokens'
 import { Modal, ModalBody, ModalFooter, Btn, Badge, Field, TimelineStep, useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
+import FileLink from '../../components/FileLink'
+import { invoiceFileRef, chequeFileRef } from '../../lib/files'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -13,24 +15,6 @@ const dt = (v) => {
   const p = (n) => String(n).padStart(2, '0')
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
-
-const DriveLink = ({ url, label = 'View' }) => (
-  <a
-    href={url || '#'}
-    target={url ? '_blank' : undefined}
-    rel="noreferrer"
-    onClick={!url ? e => e.preventDefault() : undefined}
-    style={{
-      display: 'inline-flex', alignItems: 'center', gap: 5,
-      background: '#eff6ff', border: `1px solid ${C.border}`,
-      borderRadius: 6, color: url ? '#1e40af' : C.textMut, fontSize: 12,
-      padding: '4px 10px', textDecoration: 'none', fontWeight: 600,
-      cursor: url ? 'pointer' : 'default', opacity: url ? 1 : 0.5,
-    }}
-  >
-    <ExternalLink size={11} /> {label}
-  </a>
-)
 
 export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh }) {
   const isMobile = useIsMobile()
@@ -61,7 +45,7 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
       // Cheques linked to this invoice (payment proof from Ryder, via Drive)
       supabase
         .from('cheque_invoices')
-        .select('cheque:cheques(id, check_number, ryder_conf_number, amount, status, drive_file_url, received_at)')
+        .select('cheque:cheques(id, check_number, ryder_conf_number, amount, status, drive_file_url, storage_path, received_at)')
         .eq('invoice_id', inv.id),
       // Dated history of each time the invoice was (re)sent to Ryder —
       // read straight from audit_logs. n8n writes one audit row per send
@@ -275,7 +259,7 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
                   {/* Invoice PDF */}
                   <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
                     <span style={{ color: C.textSm }}>Invoice document</span>
-                    <DriveLink url={d.drive_file_url} label={d.drive_file_url ? 'View Invoice' : 'Not uploaded'} />
+                    <FileLink variant="button" fileRef={invoiceFileRef(d)} label="View Invoice" emptyLabel="Not uploaded" />
                   </div>
                   {/* Linked checks */}
                   {checks.length === 0 ? (
@@ -292,7 +276,7 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
                             {c.amount != null ? ` · ${fmt(c.amount)}` : ''}
                           </span>
                         </div>
-                        <DriveLink url={c.drive_file_url} label="View Check" />
+                        <FileLink variant="button" fileRef={chequeFileRef(c)} label="View Check" />
                       </div>
                     ))
                   )}

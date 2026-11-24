@@ -17,8 +17,8 @@ These are non-obvious, hard-won facts. A fresh chat must read these before touch
 - The Supabase **MCP tools in this environment connect to a DIFFERENT project** (`WorkWitness` / `yzouxdikchgxlbitvzix`, an unrelated time-tracking app). So MCP `execute_sql` CANNOT reach the Levisa DB — the user runs SQL manually in the dashboard SQL Editor.
 - If a migration errors `42P01 relation "public.invoices" does not exist` although it clearly exists, the cause is **wrong project selected in the SQL editor** (or a prior failed statement aborted the transaction), NOT a SQL bug. Confirm with `select to_regclass('public.invoices');` in a fresh editor tab on the right project.
 
-### n8n owns ALL automation — DO NOT rebuild it (project charter)
-n8n + Gemini handle every trigger/timer/email/file-watch/PDF/OCR/external-API. Claude's job is ONLY: DB schema, the endpoints n8n calls, and the UI. **Never** write a file watcher, email sender, PDF generator, cron/scheduler, polling loop, or webhook listener. If a task involves *sending/watching/waiting/calling an external API* (Gmail, Drive, Gemini, Docufree) → it's n8n's job; expose an endpoint instead and comment `// Called by n8n. Do not add trigger logic here.`
+### Automation now lives IN THE PORTAL (changed 2026-11-24 — replaces the old "n8n owns all automation" charter)
+The 9 n8n workflows + Google Drive folders are being replaced by Supabase (Storage, edge functions, pg_cron) + **SMTP** (Gmail App Password) + **Composio** (Gmail read; Drive/Sheets only for Sheet links + one-time import) + **Gemini API key** + the client's own doc services. Built on git `develop`, tested on the DEV project, then merged. n8n stays live on prod until cutover — see "Portal automation" below. Don't add new n8n dependencies.
 
 ### Status enum — keep as-is
 A generic charter once proposed a different status list (`Pending/Advance Approved/...`). **We deliberately kept the existing enum** (Uploaded → … → Paid) because the whole app + n8n already depend on it. Do not migrate the enum without explicit instruction.
@@ -87,6 +87,37 @@ The `ingest-*` functions verify the caller holds the **service_role** key. They 
 - **Customer "remove" is UI-only and persisted** in `localStorage` (`customer.hiddenInvoices`) — stays hidden across refresh; never touches the DB.
 
 ---
+
+## Portal automation (added 2026-11-24, on `develop`)
+
+### Environments
+- **DEV** Supabase `zwvjkhtehkpdjjrfyhhv` (levisa-dev, free) ↔ git `develop` ↔ Vercel Preview. Filled from prod by `scripts/clone-prod-to-dev.ps1` (prod read-only; `-Reset` to refresh; dumps in git-ignored `.dbclone/`; prod's two n8n Database Webhook triggers are deliberately NOT copied). Local `.env` points at DEV.
+- **PROD** `fhmdtbvpjqftwsbdihcu` ↔ `main`. Migrations are applied by hand (psql / SQL editor) — DEV first, PROD at go-live. `deploy-functions.ps1` defaults to DEV; `-Target prod` asks for confirmation.
+- Function secrets are listed (names only) in `supabase/functions/.env.example`. DEV-only safety secrets: `EMAIL_ALLOWED_DOMAINS`, `EMAIL_REDIRECT_TO`, `DISABLE_N8N_WEBHOOKS` — **never set on PROD**. DEV `app_settings` use test recipients (RZR → divyanshu.sharma@growwstacks.com, Ryder → kapil.goswami@growwstacks.com) and the subject phrase "DEV Advance Approval for" (live n8n reacts to ANY "Payment Request for" email in brianbarroso.stap@gmail.com).
+
+### Migrations (20261124000001…06 + the never-applied-to-prod 20260617000005)
+`app_settings` (addresses, timings, `automation` switch per job: off|dry_run|live) · `email_outbox` (all email; unique `dedupe_key`) · `job_runs` · `deleted_invoices` (+ backfill from audit_logs, `restore_deleted_invoice()`) · Storage buckets `invoices` (`<client_id>/…`, customers own folder) + `cheques` (admin) · `invoices.storage_path/pdf_path/file_sha256/advance_agreed_at` (+ trigger stamping advance_agreed_at) · `cheques.storage_path/check_date/batch_number`, `cheque_invoices.amount` per line · `document_jobs` (uploads) · `processed_emails` · pg_cron + `invoke_edge_function()` (Vault: `project_url`, `internal_secret`). **20260617000005 (cheque-only needs_attention) was never applied to PROD** — run it at go-live (enum step first).
+
+### Edge functions (shared code in `supabase/functions/_shared/`)
+| Function | Caller | Replaces |
+|---|---|---|
+| `send-emails` | cron 2 min / admin | every n8n Gmail send. SMTP port 465 (25/587 blocked). After-send hooks in `_shared/emailHooks.ts` do the status changes |
+| `submit-advance-request` (changed) | customer | n8n webhook → queues RZR payment-request email; once SENT: invoices Advance Confirmed, batch Approved (n8n behaviour, no admin approval) |
+| `delete-invoice` (changed) | customer | n8n webhook → snapshot to `deleted_invoices` first |
+| `process-document` / `review-document` | customer, admin | Drive intake workflows. PDF/photo → Gemini; Excel/Sheet → SheetJS label parser (+ converter for PDF). Auto-saves only if all checks pass (incl. charges+parts = total before taxes, + tax = grand total); else admin Upload Review |
+| `scheduler` | cron 10 min / admin | 12h Advance Agreed→Advance Paid (+RZR "paid" email) · 7 days Advance Paid→email PDF to Ryder · resend every 48h **from the last send**, unlimited, until acknowledged |
+| `poll-mailbox` | cron 5 min / admin | both Gmail triggers. Read-only on Gmail; `processed_emails` makes each message run once. RZR reply: allow-listed sender + "Approved/Accepted" in the NEW text only (quoted text stripped) → Advance Agreed. Docufree confirmation → `DOC_DOWNLOADER_URL` PDF → Invoice # → Acknowledged (no-op if already acknowledged) |
+| `restore-invoice` | admin | — |
+| `import-drive-files` | admin / internal | one-time Drive → Storage copy (batches) |
+| `mark-invoice-status` (changed) | admin | manual Advance Paid → RZR email; Resubmitted → immediate Ryder email |
+
+### Data facts found while building
+- RZR's sheet Date cell is `=TODAY()` — read it at upload time; later PDF exports show the export date.
+- Most prod POs are stored with a letter "O" instead of 0 (PDF text). New uploads are normalised.
+- PDFs from the doc services: converter `http://187.127.167.132:8000/convert`, Docufree downloader `http://2.25.198.222:8000/download-pdf` (172.16.2.1 is only reachable inside the n8n server).
+
+### UI added
+Customer: Upload invoice + **My Uploads**. Admin: Upload invoice (Master), Upload cheque (Cheques), **Upload Review**, **Past Invoices**, **Deleted Invoices** (restore), **Automation** (switches, settings, email outbox, job runs, mailbox log). All file links go through `FileLink` / `src/lib/files.js` (signed Storage URL, falls back to the old Drive link).
 
 ## Project Structure
 

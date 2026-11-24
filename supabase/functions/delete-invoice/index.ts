@@ -1,6 +1,5 @@
 /**
  * Edge Function: delete-invoice
- * Called by n8n. Do not add trigger logic here.
  *
  * Customer requests deletion of an invoice they own.
  * Only invoices in 'Uploaded' or 'Eligible' status can be deleted —
@@ -11,21 +10,15 @@
  *   1. Verify caller is authenticated (customer JWT)
  *   2. Confirm invoice belongs to this customer's client
  *   3. Confirm status is Uploaded or Eligible
- *   4. Delete the invoice row from DB
- *   5. Fire n8n webhook (best-effort) with drive_file_url so n8n can
- *      move/trash the Drive file
+ *   4. Save a full snapshot to public.deleted_invoices (admin can see /
+ *      restore it). If that fails, nothing is deleted.
+ *   5. Delete the invoice row from DB + notify admin
+ *
+ * (Replaces the n8n "invoice-removal" webhook that moved the Drive file to
+ *  "Removed Invoices By RZR". The file itself is left where it is.)
  *
  * POST /functions/v1/delete-invoice
  * Body: { invoice_id: string }
- *
- * Webhook payload sent to WEBHOOK_URL:
- * {
- *   event: "invoice.deleted",
- *   invoice_id, invoice_number, invoice_amount,
- *   drive_file_id, drive_file_url,
- *   client_id, client_name,
- *   deleted_by, deleted_at
- * }
  */
 
 import { createClient } from '@supabase/supabase-js'
@@ -37,10 +30,6 @@ const corsHeaders = {
 
 // Statuses that are safe to delete — once in the pipeline it cannot be removed.
 const DELETABLE_STATUSES = ['Uploaded', 'Eligible']
-
-// n8n webhook — set this once you have the URL.
-// Fires with the drive link so n8n can move the file to trash/archive.
-const WEBHOOK_URL = 'https://n8n.srv1749674.hstgr.cloud/webhook/invoice-removal'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -103,6 +92,38 @@ Deno.serve(async (req) => {
       }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
+    // ── Archive a full snapshot first (admin "Deleted Invoices" + restore) ──
+    // Replaces the n8n webhook that moved the Drive file to "Removed Invoices
+    // By RZR". If the snapshot cannot be saved, nothing is deleted.
+    const { data: fullRow, error: fullErr } = await service
+      .from('invoices').select('*').eq('id', invoice_id).single()
+    if (fullErr || !fullRow) throw fullErr ?? new Error('invoice vanished before delete')
+
+    const { data: archived, error: archiveErr } = await service
+      .from('deleted_invoices')
+      .insert({
+        invoice_id:       fullRow.id,
+        invoice_number:   fullRow.invoice_number,
+        invoice_amount:   fullRow.invoice_amount,
+        status_at_delete: fullRow.status,
+        client_id:        fullRow.client_id,
+        snapshot:         fullRow,
+        drive_file_id:    fullRow.drive_file_id ?? null,
+        drive_file_url:   fullRow.drive_file_url ?? null,
+        storage_path:     fullRow.storage_path ?? null,
+        deleted_by:       user.id,
+        deleted_by_email: user.email ?? null,
+      })
+      .select('id')
+      .single()
+
+    if (archiveErr || !archived) {
+      console.error('Archive failed — invoice NOT deleted:', archiveErr)
+      return new Response(JSON.stringify({ error: 'Failed to archive invoice; nothing was deleted' }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     // ── Delete from DB ────────────────────────────────────────
     const { error: deleteErr } = await service
       .from('invoices')
@@ -111,6 +132,7 @@ Deno.serve(async (req) => {
 
     if (deleteErr) {
       console.error('Delete failed:', deleteErr)
+      await service.from('deleted_invoices').delete().eq('id', archived.id) // undo the archive row
       return new Response(JSON.stringify({ error: 'Failed to delete invoice' }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -124,32 +146,7 @@ Deno.serve(async (req) => {
       body:      `${clientRow?.name} removed invoice ${inv.invoice_number} (${inv.invoice_amount ? '$' + Number(inv.invoice_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) : ''}) from their portal.`,
     }).then(({ error }) => { if (error) console.error('Notification insert failed (non-fatal):', error) })
 
-    // ── Webhook: notify n8n (best-effort, never fails the request) ──
-    const now = new Date().toISOString()
-    const payload = {
-      event:          'invoice.deleted',
-      invoice_id:     inv.id,
-      invoice_number: inv.invoice_number,
-      invoice_amount: inv.invoice_amount,
-      drive_file_id:  inv.drive_file_id,
-      drive_file_url: inv.drive_file_url,
-      client_id:      inv.client_id,
-      client_name:    clientRow?.name,
-      deleted_by:     user.id,
-      deleted_at:     now,
-    }
-
-    if (WEBHOOK_URL && WEBHOOK_URL !== 'REPLACE_WITH_YOUR_WEBHOOK_URL') {
-      fetch(WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      }).catch(err => console.error('Webhook fire failed (non-fatal):', err))
-    } else {
-      console.log('Webhook not configured — skipping. Payload:', JSON.stringify(payload))
-    }
-
-    return new Response(JSON.stringify({ ok: true, deleted: invoice_id }), {
+    return new Response(JSON.stringify({ ok: true, deleted: invoice_id, archived_id: archived.id }), {
       status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
 

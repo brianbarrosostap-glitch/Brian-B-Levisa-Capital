@@ -83,3 +83,31 @@ verify_jwt = false
 
 [functions.ingest-confirmation]
 verify_jwt = false
+
+# Portal automation (2026-11). Called by pg_cron with the x-internal-secret
+# header (no user JWT) AND by admins from the portal, so the platform JWT
+# check is off; the function itself checks the secret or the admin role.
+[functions.send-emails]
+verify_jwt = false
+
+[functions.scheduler]
+verify_jwt = false
+
+[functions.poll-mailbox]
+verify_jwt = false
+
+[functions.import-drive-files]
+verify_jwt = false
+
+# Portal users only (customer / admin JWT checked by the platform AND the function)
+[functions.process-document]
+verify_jwt = true
+
+[functions.review-document]
+verify_jwt = true
+
+[functions.restore-invoice]
+verify_jwt = true
+
+[functions.delete-invoice]
+verify_jwt = true

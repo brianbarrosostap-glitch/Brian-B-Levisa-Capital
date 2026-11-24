@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react'
-import { Check, X } from 'lucide-react'
+import { Check, X, Upload } from 'lucide-react'
 import { C, ROW_BG, adminStatus } from '../../tokens'
 import { Card, Btn, Badge, Tabs, SearchBar, FilterChip, KebabMenu, TH, TD, Modal, ModalBody, ModalFooter, useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
 import InvoiceDetailModal from './InvoiceDetailModal'
 import { usePersistentState } from '../../hooks/usePersistentState'
+import UploadDocumentModal from '../../components/UploadDocumentModal'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtAdv = n => n == null ? '—' : 'ADV-' + String(n).padStart(4, '0')
@@ -228,6 +229,16 @@ export default function Master() {
   const [statusAction, setStatusAction] = useState(null) // { inv, action }
   const [loading, setLoading]   = useState(true)
   const [chequesByInvoice, setChequesByInvoice] = useState({})
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const [clients, setClients]   = useState([])   // for the upload client picker
+
+  const openUpload = async () => {
+    setUploadOpen(true)
+    if (clients.length) return
+    const { data, error } = await supabase.from('clients').select('id, name').order('name')
+    if (error) console.error('Master clients load failed:', error)
+    if (data) setClients(data)
+  }
 
   useEffect(() => {
     fetchInvoices()
@@ -350,6 +361,9 @@ export default function Master() {
               <X size={13} strokeWidth={2.5} /> Clear filters
             </button>
           )}
+          <div style={{ marginLeft: 'auto' }}>
+            <Btn onClick={openUpload}><Upload size={13} /> Upload invoice</Btn>
+          </div>
         </div>
         {advQuery != null && (
           /* ── Advance summary — reconcile against the bank transfer ── */
@@ -540,6 +554,12 @@ export default function Master() {
           onClose={() => setActiveBatch(null)}
           onApproved={() => { fetchInvoices(); fetchPendingBatch(); setActiveBatch(null) }}
         />
+      )}
+
+      {uploadOpen && (
+        <UploadDocumentModal kind="invoice" role="admin" clients={clients}
+          onClose={() => setUploadOpen(false)}
+          onDone={() => { fetchInvoices(true); fetchCheques() }} />
       )}
 
       {detailModal && (

@@ -1,23 +1,16 @@
 import React, { useState, useEffect } from 'react'
-import { Check, X, ExternalLink } from 'lucide-react'
+import { Check, X, Upload } from 'lucide-react'
 import { C } from '../../tokens'
 import { Card, Btn, TH, TD, Modal, ModalBody, ModalFooter, useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
+import FileLink from '../../components/FileLink'
+import UploadDocumentModal from '../../components/UploadDocumentModal'
+import { invoiceFileRef } from '../../lib/files'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 // Invoice deletion is a real DB delete via the delete-invoice edge function.
 // The function also fires a webhook so n8n can move the Drive file to trash.
-
-const DriveBadge = ({ url }) => (
-  <a href={url || '#'} target={url ? '_blank' : undefined} rel="noreferrer" onClick={!url ? e => e.preventDefault() : undefined} style={{
-    display: 'inline-flex', alignItems: 'center', gap: 4,
-    background: '#eff6ff', border: `1px solid ${C.border}`,
-    borderRadius: 6, color: '#1e40af', fontSize: 11, padding: '2px 7px', textDecoration: 'none',
-  }}>
-    <ExternalLink size={9} /> View
-  </a>
-)
 
 /* ── Delete Modal ── */
 function RemoveModal({ inv, onClose, onConfirm }) {
@@ -137,20 +130,24 @@ export default function InvoicesToAdvance() {
   const [submitModal, setSubmitModal] = useState(false)
   const [loading, setLoading]   = useState(true)
   const [syncedAt, setSyncedAt] = useState(null)
+  const [clientId, setClientId] = useState(null)
+  const [uploadOpen, setUploadOpen] = useState(false)
 
   useEffect(() => { fetchInvoices() }, [])
 
-  const fetchInvoices = async () => {
-    setLoading(true)
+  // `silent` = refresh after an upload without blanking the table.
+  const fetchInvoices = async (silent = false) => {
+    if (!silent) setLoading(true)
     // Get current user's client invoices that are eligible to be included
     const { data: { user } } = await supabase.auth.getUser()
     const { data: client }   = await supabase.from('clients').select('id').eq('owner_id', user.id).single()
 
     if (!client) { setLoading(false); return }
+    setClientId(client.id)
 
     const { data } = await supabase
       .from('invoices')
-      .select('id, invoice_number, unit_number, invoice_date, invoice_amount, advance_amount, status, drive_file_url, updated_at')
+      .select('id, invoice_number, unit_number, invoice_date, invoice_amount, advance_amount, status, drive_file_url, storage_path, pdf_path, updated_at')
       .eq('client_id', client.id)
       .in('status', ['Uploaded', 'Eligible'])
       .order('invoice_date', { ascending: false })
@@ -191,7 +188,12 @@ export default function InvoicesToAdvance() {
           <path d="M59.8 52.85H27.5l-13.75 23.8c1.35.8 2.9 1.2 4.55 1.2h50.7c1.65 0 3.2-.45 4.55-1.2L59.8 52.85z" fill="#2684FC"/>
           <path d="M73.4 26.45L60.7 4.5C59.9 3.1 58.75 2 57.4 1.2L43.65 25l16.15 27.85h27.45c0-1.55-.4-3.1-1.2-4.5l-12.65-21.9z" fill="#FFBA00"/>
         </svg>
-        Synced from Google Drive{minutesAgo != null ? ` · updated ${minutesAgo < 1 ? 'just now' : `${minutesAgo} min ago`}` : ''}
+        <span style={{ flex: 1 }}>
+          Synced from Google Drive{minutesAgo != null ? ` · updated ${minutesAgo < 1 ? 'just now' : `${minutesAgo} min ago`}` : ''}
+        </span>
+        <Btn onClick={() => setUploadOpen(true)} disabled={loading && !clientId}>
+          <Upload size={13} /> Upload invoice
+        </Btn>
       </div>
 
       <Card noPad>
@@ -227,7 +229,7 @@ export default function InvoicesToAdvance() {
                     </div>
                   ))}
                   <div style={{ marginTop: 8, borderTop: `1px solid ${C.border}`, paddingTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span onClick={e => e.stopPropagation()}><DriveBadge url={inv.drive_file_url} /></span>
+                    <span onClick={e => e.stopPropagation()}><FileLink fileRef={invoiceFileRef(inv)} /></span>
                     <button onClick={e => { e.stopPropagation(); setRemoveModal(inv) }} style={{ width: 24, height: 24, borderRadius: 5, border: `1px solid ${C.border}`, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <X size={12} color={C.textMut} />
                     </button>
@@ -273,7 +275,7 @@ export default function InvoicesToAdvance() {
                     <TD mono>{inv.invoice_number}</TD>
                     <TD muted>{inv.unit_number}</TD>
                     <TD style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(inv.invoice_amount)}</TD>
-                    <TD style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}><DriveBadge url={inv.drive_file_url} /></TD>
+                    <TD style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}><FileLink fileRef={invoiceFileRef(inv)} /></TD>
                     <TD style={{ padding: '6px 8px' }} onClick={e => e.stopPropagation()}>
                       <button onClick={() => setRemoveModal(inv)} style={{ width: 24, height: 24, borderRadius: 5, border: `1px solid ${C.border}`, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <X size={12} color={C.textMut} />
@@ -320,6 +322,11 @@ export default function InvoicesToAdvance() {
             setSelected(prev => { const n = new Set(prev); n.delete(removeModal.id); return n })
           }}
         />
+      )}
+      {uploadOpen && (
+        <UploadDocumentModal kind="invoice" role="customer" clientId={clientId}
+          onClose={() => setUploadOpen(false)}
+          onDone={() => fetchInvoices(true)} />
       )}
       {submitModal && (
         <SubmitModal selected={selectedInvoices} onClose={() => setSubmitModal(false)} onSubmit={fetchInvoices} />

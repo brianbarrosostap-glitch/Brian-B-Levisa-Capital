@@ -17,10 +17,16 @@
  *  - Creates the batch row
  *  - Updates all invoice statuses to "Payment Requested"
  *  - Links invoices to the batch
+ *  - Queues the payment-request email to RZR (app_settings.rzr_email).
+ *    When it is sent: invoices → Advance Confirmed, batch → Approved
+ *    (n8n behaviour — no manual admin approval step).
  *  - Returns the new batch record
  */
 
 import { createClient } from '@supabase/supabase-js'
+import { getSettings } from '../_shared/settings.ts'
+import { kickOutbox, queueEmail } from '../_shared/outbox.ts'
+import { paymentRequestEmail, paymentRequestSubject } from '../_shared/templates.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -158,48 +164,54 @@ Deno.serve(async (req) => {
     })
     if (notifErr) console.error('submit-advance-request: notification insert failed:', notifErr)
 
-    // ── Trigger the n8n webhook: hand off the invoice numbers so n8n can
-    //    fetch each invoice from Supabase and email RZR for confirmation. ──
-    //
-    // Set the webhook URL via the N8N_ADVANCE_REQUEST_WEBHOOK secret:
-    //   supabase secrets set N8N_ADVANCE_REQUEST_WEBHOOK="https://...your n8n webhook..."
-    // (or paste it into WEBHOOK_FALLBACK below). The call is best-effort —
-    // a webhook failure is logged but does NOT fail the advance request.
-    const WEBHOOK_FALLBACK = 'https://n8n.srv1749674.hstgr.cloud/webhook/email-for-rzr-requested-advance-invoice'   // ← you can paste the n8n webhook URL here instead of using the secret
-    const webhookUrl = Deno.env.get('N8N_ADVANCE_REQUEST_WEBHOOK') || WEBHOOK_FALLBACK
+    // ── Email RZR the payment request (replaces the n8n webhook) ──
+    // Same as n8n: one email listing every invoice with its 97% advance,
+    // asking RZR to reply "Approved"/"Accepted". Once it is actually SENT,
+    // the after-send hook moves the invoices to Advance Confirmed and the
+    // batch to Approved (see _shared/emailHooks.ts). The batch already exists
+    // at this point, so a queueing failure does not fail the request — the
+    // admin is notified instead.
+    let emailQueued = false
+    try {
+      const { data: emailRows, error: rowsErr } = await service
+        .from('invoices')
+        .select('invoice_number, po_number, invoice_amount, advance_amount')
+        .in('id', invoice_ids)
+        .order('invoice_number')
+      if (rowsErr) throw rowsErr
 
-    if (webhookUrl) {
-      try {
-        const resp = await fetch(webhookUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event: 'advance_request_submitted',
-            request_number: requestNumber,
-            batch_id: batch.id,
-            client_id: client.id,
-            client_name: client.name || null,
-            invoice_count: (invoices || []).length,
-            // The list of invoice numbers n8n needs to fetch + email about.
-            invoice_numbers: (invoices || []).map((i: any) => i.invoice_number),
-            invoices: (invoices || []).map((i: any) => ({
-              id: i.id,
-              invoice_number: i.invoice_number,
-            })),
-            submitted_by: user.email || null,
-            submitted_at: new Date().toISOString(),
-          }),
-        })
-        if (!resp.ok) console.error('n8n webhook returned', resp.status, await resp.text())
-      } catch (whErr) {
-        console.error('submit-advance-request: n8n webhook call failed:', whErr)
-      }
-    } else {
-      console.warn('submit-advance-request: no n8n webhook URL configured — skipped.')
+      const settings = await getSettings(service)
+      const rzrEmail = String(settings.rzr_email ?? '')
+      if (!rzrEmail) throw new Error('app_settings.rzr_email is not configured')
+      const phrase = String(settings.payment_request_subject ?? 'Payment Request for')
+      const numbers = (emailRows ?? []).map((r) => r.invoice_number)
+      const { html, text } = paymentRequestEmail(emailRows ?? [])
+
+      const queued = await queueEmail(service, {
+        kind: 'payment_request',
+        to: [rzrEmail],
+        subject: paymentRequestSubject(phrase, numbers),
+        html,
+        text,
+        relatedInvoiceIds: invoice_ids,
+        relatedBatchId: batch.id,
+        dedupeKey: `payment_request:${batch.id}`,
+        createdBy: user.id,
+      })
+      emailQueued = !queued.duplicate
+      kickOutbox(service) // send now; the 2-minute cron retries if this attempt fails
+    } catch (mailErr) {
+      console.error('submit-advance-request: could not queue RZR email:', mailErr)
+      await service.from('notifications').insert({
+        client_id: client.id,
+        audience: 'admin',
+        title: `RZR email NOT queued — ${requestNumber}`,
+        body: `The advance request was saved but the payment-request email could not be queued: ${String(mailErr)}`.slice(0, 1000),
+      })
     }
 
     return new Response(
-      JSON.stringify({ success: true, batch }),
+      JSON.stringify({ success: true, batch, email_queued: emailQueued }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 

@@ -1,19 +1,14 @@
 import React, { useState, useEffect } from 'react'
-import { ExternalLink } from 'lucide-react'
 import { C, customerStatus } from '../../tokens'
 import { Card, Badge, TH, TD, useIsMobile } from '../../components/ui'
 import { supabase } from '../../lib/supabase'
+import FileLink from '../../components/FileLink'
+import { invoiceFileRef } from '../../lib/files'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 // Once Brian approves, the customer can see the 97% advance amount.
 const APPROVED = ['Advance Confirmed', 'Advance Agreed', 'Advance Paid', 'Submitted to Ryder', 'Acknowledged', 'Resubmitted', 'Paid']
-
-const DriveBadge = ({ url }) => (
-  <a href={url || '#'} target={url ? '_blank' : undefined} rel="noreferrer" onClick={!url ? e => e.preventDefault() : undefined} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#eff6ff', border: `1px solid ${C.border}`, borderRadius: 6, color: '#1e40af', fontSize: 11, padding: '2px 7px', textDecoration: 'none' }}>
-    <ExternalLink size={9} /> View
-  </a>
-)
 
 // Friendly status pill — normalise colour key so all "Paid" labels share one colour.
 const CUSTOMER_COLOUR_KEY = {
@@ -38,7 +33,7 @@ export default function AdvancedInvoices() {
 
     const { data } = await supabase
       .from('invoices')
-      .select('id, invoice_number, po_number, invoice_amount, advance_amount, submitted_at, status, drive_file_url')
+      .select('id, invoice_number, po_number, invoice_amount, advance_amount, submitted_at, status, drive_file_url, storage_path, pdf_path')
       .eq('client_id', client.id)
       .not('submitted_at', 'is', null)
       .order('submitted_at', { ascending: false })
@@ -84,7 +79,7 @@ export default function AdvancedInvoices() {
                     </div>
                   )}
                   <div style={{ marginTop: 8, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
-                    <DriveBadge url={inv.drive_file_url} />
+                    <FileLink fileRef={invoiceFileRef(inv)} />
                   </div>
                 </div>
               )
@@ -122,7 +117,7 @@ export default function AdvancedInvoices() {
                       </TD>
                       <TD muted style={{ fontSize: 12 }}>{inv.submitted_at ? new Date(inv.submitted_at).toLocaleDateString() : '—'}</TD>
                       <TD style={{ textAlign: 'center' }}><CustomerBadge status={inv.status} /></TD>
-                      <TD style={{ textAlign: 'center' }}><DriveBadge url={inv.drive_file_url} /></TD>
+                      <TD style={{ textAlign: 'center' }}><FileLink fileRef={invoiceFileRef(inv)} /></TD>
                     </tr>
                     {/* Inline note: this invoice needs the customer's email confirmation */}
                     {pendingConf && (

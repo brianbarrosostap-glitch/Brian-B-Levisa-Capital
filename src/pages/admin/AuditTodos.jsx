@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Check, ExternalLink, Landmark, Banknote, ChevronDown, ChevronUp, MailWarning } from 'lucide-react'
+import { Check, Landmark, Banknote, ChevronDown, ChevronUp, MailWarning } from 'lucide-react'
 import { C } from '../../tokens'
 import { useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
 import InvoiceDetailModal from './InvoiceDetailModal'
 import { usePersistentState } from '../../hooks/usePersistentState'
+import FileLink from '../../components/FileLink'
+import { hasFile, invoiceFileRef, chequeFileRef } from '../../lib/files'
 
 const fmt = n => n == null ? '—' : '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtAdv = n => 'ADV-' + String(n).padStart(4, '0')
@@ -57,6 +59,10 @@ function chequeInvoices(todo) {
   }
   return (todo.cheque_invoice_numbers || '').split(', ').filter(Boolean).map(n => ({ n }))
 }
+
+// v_audit_todos only exposes the Drive link; the Storage path (portal
+// uploads) is merged in by load() as `cheque_storage_path`.
+const chequeTodoFileRef = (todo) => chequeFileRef({ storage_path: todo.cheque_storage_path, drive_file_url: todo.cheque_drive_url })
 
 const metaText = { fontSize: 11.5, color: C.textSm, whiteSpace: 'nowrap' }
 const Dot = () => <span style={{ color: C.borderMd }}>•</span>
@@ -137,13 +143,10 @@ function TodoRow({ todo, selected, busy, onSelect, onOpenInvoice }) {
               </span>
               {todo.po_number && <><Dot /><span style={metaText}>PO <span style={{ fontFamily: 'monospace' }}>{todo.po_number}</span></span></>}
               {todo.advance_number != null && <><Dot /><span style={metaText}>{fmtAdv(todo.advance_number)}</span></>}
-              {todo.drive_file_url && (
+              {hasFile(invoiceFileRef(todo)) && (
                 <>
                   <Dot />
-                  <a href={todo.drive_file_url} target="_blank" rel="noreferrer"
-                    style={{ ...metaText, color: C.primary, display: 'inline-flex', alignItems: 'center', gap: 3, textDecoration: 'none', fontWeight: 600 }}>
-                    View invoice <ExternalLink size={11} />
-                  </a>
+                  <FileLink variant="text" fileRef={invoiceFileRef(todo)} label="View invoice" />
                 </>
               )}
             </>
@@ -166,13 +169,10 @@ function TodoRow({ todo, selected, busy, onSelect, onOpenInvoice }) {
                   {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                 </button>
               )}
-              {todo.cheque_drive_url && (
+              {hasFile(chequeTodoFileRef(todo)) && (
                 <>
                   <Dot />
-                  <a href={todo.cheque_drive_url} target="_blank" rel="noreferrer"
-                    style={{ ...metaText, color: C.primary, display: 'inline-flex', alignItems: 'center', gap: 3, textDecoration: 'none', fontWeight: 600 }}>
-                    View cheque <ExternalLink size={11} />
-                  </a>
+                  <FileLink variant="text" fileRef={chequeTodoFileRef(todo)} label="View cheque" />
                 </>
               )}
             </>
@@ -291,7 +291,14 @@ export default function AuditTodos() {
         ? 'Audit to-dos not set up yet — run migration 20261013000002_audit_todos.sql.'
         : 'Could not load audit to-dos.')
     } else {
-      setTodos(data || [])
+      // Storage paths for uploaded cheques (view predates cheques.storage_path).
+      let pathById = {}
+      if ((data || []).some(t => t.kind === 'cheque')) {
+        const { data: paths } = await supabase.from('cheques').select('id, storage_path').not('storage_path', 'is', null)
+        pathById = Object.fromEntries((paths || []).map(p => [p.id, p.storage_path]))
+      }
+      if (seq !== loadSeq.current) return
+      setTodos((data || []).map(t => (pathById[t.cheque_id] ? { ...t, cheque_storage_path: pathById[t.cheque_id] } : t)))
       setError(e => (e.startsWith('Could not load') || e.startsWith('Audit to-dos not set up') ? '' : e))
     }
     await loadUnconfirmed(seq)
@@ -304,7 +311,7 @@ export default function AuditTodos() {
   const loadUnconfirmed = async (seq) => {
     const [{ data: invs, error: invErr }, { data: ticks }] = await Promise.all([
       supabase.from('invoices')
-        .select('id, invoice_number, po_number, invoice_amount, status, advance_number, resubmit_count, ryder_submitted_at, advance_paid_at, last_resubmitted_at, created_at, drive_file_url')
+        .select('id, invoice_number, po_number, invoice_amount, status, advance_number, resubmit_count, ryder_submitted_at, advance_paid_at, last_resubmitted_at, created_at, drive_file_url, storage_path, pdf_path')
         .in('status', AWAITING_RYDER)
         .is('ryder_confirmed_at', null),
       supabase.from('audit_todos')

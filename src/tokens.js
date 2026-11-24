@@ -18,6 +18,19 @@ export const C = {
   amberLt:  '#fef9c3',
   info:     '#0369a1',
   infoLt:   '#e0f2fe',
+  // File links (View invoice / View cheque) + light panels
+  link:     '#1e40af',
+  linkBg:   '#eff6ff',
+  panel:    '#f8fafc',
+};
+
+// Tones for small status pills (upload jobs, emails, job runs). Built from C.
+export const TONE = {
+  success: { bg: C.primLt,  text: C.primary },
+  warn:    { bg: C.amberLt, text: C.amber },
+  danger:  { bg: C.redLt,   text: C.red },
+  info:    { bg: C.infoLt,  text: C.info },
+  muted:   { bg: C.bg,      text: C.textSm },
 };
 
 export const shadow  = '0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04)';

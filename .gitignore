@@ -64,6 +64,9 @@ temp/
 .supabase/
 supabase/.temp/
 
+# Prod -> dev database clone dumps (contain real customer data)
+.dbclone/
+
 # Local Supabase env files
 supabase/.env
 supabase/.env.*

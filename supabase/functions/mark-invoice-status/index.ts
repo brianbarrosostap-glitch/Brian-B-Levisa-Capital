@@ -18,6 +18,8 @@
  */
 
 import { createClient } from '@supabase/supabase-js'
+import { kickOutbox } from '../_shared/outbox.ts'
+import { queueAdvancePaidEmail, queueRyderSubmission } from '../_shared/ryder.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -85,7 +87,7 @@ Deno.serve(async (req) => {
     // ── Fetch current invoice ─────────────────────────────────
     const { data: inv, error: invErr } = await service
       .from('invoices')
-      .select('id, status')
+      .select('id, status, ryder_submitted_at')
       .eq('id', invoice_id)
       .single()
 
@@ -194,8 +196,32 @@ Deno.serve(async (req) => {
       source: 'mark-invoice-status',
     })
 
+    // ── Emails that follow a manual status change (same as the automatic path) ──
+    //   → Advance Paid : "Invoice X is Paid" to RZR
+    //   → Resubmitted  : re-send the invoice PDF to Ryder now (then Submitted to Ryder)
+    let emailWarning: string | null = null
+    try {
+      let queued = false
+      if (updated.status === 'Advance Paid' && inv.status !== 'Advance Paid') {
+        await queueAdvancePaidEmail(service, [updated], user.id)
+        queued = true
+      }
+      if (updated.status === 'Resubmitted' && inv.status !== 'Resubmitted') {
+        await queueRyderSubmission(service, updated, (updated.resubmit_count ?? 0) + 1, user.id)
+        queued = true
+      }
+      if (queued) kickOutbox(service)
+    } catch (mailErr) {
+      emailWarning = `Status saved, but the email could not be queued: ${String(mailErr)}`
+      console.error('mark-invoice-status:', emailWarning)
+      await service.from('notifications').insert({
+        audience: 'admin', invoice_id, client_id: updated.client_id,
+        title: `Email not queued for ${updated.invoice_number}`, body: emailWarning.slice(0, 1000),
+      })
+    }
+
     return new Response(
-      JSON.stringify({ success: true, invoice: updated }),
+      JSON.stringify({ success: true, invoice: updated, email_warning: emailWarning }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
