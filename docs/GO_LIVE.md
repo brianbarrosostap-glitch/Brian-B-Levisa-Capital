@@ -3,6 +3,7 @@
 Prepared 2026-11-24. Do this **after** the 3–4 days of testing on the `develop` preview.
 PROD = Supabase `fhmdtbvpjqftwsbdihcu` · DEV = `zwvjkhtehkpdjjrfyhhv`.
 n8n keeps running until each step below switches it off — never run an n8n workflow and its portal job at the same time.
+The job switches ("Automation `<job>` = …" below) are in the collapsed **Advanced — automation switches** card at the bottom of the Automation tab.
 
 ## 0. Before you start
 - [ ] Preview testing signed off (uploads, cheques, advance request → reply → paid → Ryder (kapil) → resubmit, deleted/restore, Automation tab).

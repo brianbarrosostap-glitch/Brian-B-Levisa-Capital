@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Save, Send, RefreshCw, Mail } from 'lucide-react'
+import { Save, Send, RefreshCw, Mail, ChevronRight } from 'lucide-react'
 import { C, TONE, FONT_MONO } from '../../tokens'
 import { Card, Btn, SearchBar, DataList, Pager, useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
@@ -136,7 +136,10 @@ const PagedList = ({ paged, sizes, noun, ...listProps }) => {
 }
 
 /* ── (a) + (b) settings ── */
-function SettingsCards() {
+// Settings card first, then `children` (the log tables), then the job switches — collapsed at the
+// bottom: they are only needed for the staged go-live (docs/GO_LIVE.md) or to pause a job.
+function SettingsCards({ children }) {
+  const [showSwitches, setShowSwitches] = useState(false)
   const [values, setValues]   = useState({})     // key → stored jsonb value
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState('')
@@ -164,6 +167,8 @@ function SettingsCards() {
   }
   useEffect(() => { load() }, [])
 
+  const live = SWITCHES.filter(s => (modes[s.key] || 'off') === 'live').length
+  const dry = SWITCHES.filter(s => (modes[s.key] || 'off') === 'dry_run').length
   const modesChanged = SWITCHES.some(s => (modes[s.key] || 'off') !== ((values.automation || {})[s.key] || 'off'))
   const changedKeys = SETTINGS.filter(s => compact(fromDraft(s.type, draft[s.key] ?? '')) !== compact(values[s.key] ?? (s.type === 'array' ? [] : s.type === 'number' ? null : '')))
 
@@ -205,36 +210,6 @@ function SettingsCards() {
   return (
     <>
       <Card noPad>
-        <SectionHead title="Automation switches" subtitle="Off = never runs · Dry run = logs what it would do, changes nothing · Live = runs for real">
-          <Msg msg={msgA} />
-          <Btn onClick={saveModes} disabled={!modesChanged || savingA || loading}><Save size={13} /> {savingA ? 'Saving…' : 'Save switches'}</Btn>
-        </SectionHead>
-        <LoadState loading={loading} error={error}>
-          <div>
-            {SWITCHES.map((s, i) => {
-              const mode = modes[s.key] || 'off'
-              return (
-                <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px', borderTop: i ? `1px solid ${C.border}` : 'none', flexWrap: 'wrap' }}>
-                  <div style={{ flex: 1, minWidth: 220 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 14.5, fontWeight: 600, color: C.text }}>{s.label}</span>
-                      <code style={{ fontSize: 12, color: C.textMut }}>{s.key}</code>
-                    </div>
-                    <div style={{ fontSize: 13, color: C.textSm, marginTop: 2 }}>{s.desc}</div>
-                  </div>
-                  <StatusPill label={MODE_SHORT[mode] || mode} tone={MODE_TONE[mode] || 'muted'} small />
-                  <select value={mode} onChange={e => { setModes(m => ({ ...m, [s.key]: e.target.value })); setMsgA(null) }}
-                    aria-label={`${s.label} mode`} className="lc-select" style={{ ...inputStyle, width: 190, cursor: 'pointer' }}>
-                    {MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                  </select>
-                </div>
-              )
-            })}
-          </div>
-        </LoadState>
-      </Card>
-
-      <Card noPad style={{ marginTop: 16 }}>
         <SectionHead title="Settings" subtitle="Recipients and timings used by the automation">
           <Msg msg={msgB} />
           <Btn onClick={saveSettings} disabled={changedKeys.length === 0 || savingB || loading}><Save size={13} /> {savingB ? 'Saving…' : 'Save settings'}</Btn>
@@ -256,6 +231,57 @@ function SettingsCards() {
             ))}
           </div>
         </LoadState>
+      </Card>
+
+      {children}
+
+      <Card noPad style={{ marginTop: 16 }}>
+        <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <button type="button" onClick={() => setShowSwitches(v => !v)} aria-expanded={showSwitches} className="lc-focus"
+            style={{ flex: 1, minWidth: 220, display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
+            <ChevronRight size={16} color={C.textMut} style={{ transform: showSwitches ? 'rotate(90deg)' : 'none', transition: 'transform .15s', flexShrink: 0 }} />
+            <span>
+              <span style={{ display: 'block', fontSize: 15.5, fontWeight: 700, color: C.textB }}>Advanced — automation switches</span>
+              <span style={{ display: 'block', fontSize: 13, color: C.textMut, marginTop: 2 }}>
+                Only needed during go-live or to pause a job{!loading && !error ? ` · ${live} live · ${dry} dry run · ${SWITCHES.length - live - dry} off` : ''}
+              </span>
+            </span>
+          </button>
+          {showSwitches && <>
+            <Msg msg={msgA} />
+            <Btn onClick={saveModes} disabled={!modesChanged || savingA || loading}><Save size={13} /> {savingA ? 'Saving…' : 'Save switches'}</Btn>
+          </>}
+        </div>
+        {showSwitches && (
+          <div style={{ borderTop: `1px solid ${C.border}` }}>
+            <div style={{ padding: '8px 16px', fontSize: 13, color: C.textSm, background: C.panel || '#f8fafc', borderBottom: `1px solid ${C.border}` }}>
+              Off = never runs · Dry run = logs what it would do, changes nothing · Live = runs for real
+            </div>
+            <LoadState loading={loading} error={error}>
+              <div>
+                {SWITCHES.map((s, i) => {
+                  const mode = modes[s.key] || 'off'
+                  return (
+                    <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px', borderTop: i ? `1px solid ${C.border}` : 'none', flexWrap: 'wrap' }}>
+                      <div style={{ flex: 1, minWidth: 220 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 14.5, fontWeight: 600, color: C.text }}>{s.label}</span>
+                          <code style={{ fontSize: 12, color: C.textMut }}>{s.key}</code>
+                        </div>
+                        <div style={{ fontSize: 13, color: C.textSm, marginTop: 2 }}>{s.desc}</div>
+                      </div>
+                      <StatusPill label={MODE_SHORT[mode] || mode} tone={MODE_TONE[mode] || 'muted'} small />
+                      <select value={mode} onChange={e => { setModes(m => ({ ...m, [s.key]: e.target.value })); setMsgA(null) }}
+                        aria-label={`${s.label} mode`} className="lc-select" style={{ ...inputStyle, width: 190, cursor: 'pointer' }}>
+                        {MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                      </select>
+                    </div>
+                  )
+                })}
+              </div>
+            </LoadState>
+          </div>
+        )}
       </Card>
     </>
   )
@@ -444,10 +470,11 @@ function MailboxCard() {
 export default function Automation() {
   return (
     <div>
-      <SettingsCards />
-      <EmailsCard />
-      <JobRunsCard />
-      <MailboxCard />
+      <SettingsCards>
+        <EmailsCard />
+        <JobRunsCard />
+        <MailboxCard />
+      </SettingsCards>
     </div>
   )
 }

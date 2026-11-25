@@ -121,7 +121,7 @@ Step-by-step prod cutover: **`docs/GO_LIVE.md`** (planned after 3–4 days of pr
 - PDFs from the doc services: converter `http://187.127.167.132:8000/convert`, Docufree downloader `http://2.25.198.222:8000/download-pdf` (172.16.2.1 is only reachable inside the n8n server).
 
 ### UI added
-Customer: Upload invoice + **My Uploads**. Admin: Upload invoice (Master), Upload cheque (Cheques), **Upload Review**, **Past Invoices**, **Deleted Invoices** (restore), **Automation** (switches, settings, email outbox, job runs, mailbox log). All file links go through `FileLink` / `src/lib/files.js` (signed Storage URL, falls back to the old Drive link).
+Customer: Upload invoice + **My Uploads**. Admin: Upload invoice (Master), Upload cheque (Cheques), **Upload Review**, **Past Invoices**, **Deleted Invoices** (restore), **Automation** (settings, email outbox, job runs, mailbox log; job switches collapsed in "Advanced" at the bottom), **How It Works** (`src/pages/admin/HowItWorks.jsx` — plain-language guide for new admins: every step, email in/out, screen and status; timings/addresses read live from `app_settings`). **When a flow, email, timing rule or screen changes, update HowItWorks.jsx too.** All file links go through `FileLink` / `src/lib/files.js` (signed Storage URL, falls back to the old Drive link).
 
 ## Project Structure
 

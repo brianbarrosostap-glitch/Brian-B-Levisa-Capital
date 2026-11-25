@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { LayoutDashboard, ListOrdered, Receipt, ScrollText, FileSearch, Archive, Trash2, Bot } from 'lucide-react'
+import { LayoutDashboard, ListOrdered, Receipt, ScrollText, FileSearch, Archive, Trash2, Bot, BookOpen } from 'lucide-react'
 import { Shell, Topbar, PageContent, NavItem } from '../../components/ui'
 import NotificationBell from '../../components/NotificationBell'
 import InstallPWA from '../../components/InstallPWA'
@@ -14,6 +14,7 @@ import UploadReview from './UploadReview'
 import PastInvoices from './PastInvoices'
 import DeletedInvoices from './DeletedInvoices'
 import Automation from './Automation'
+import HowItWorks from './HowItWorks'
 
 const NAV = [
   { key: 'dashboard',  label: 'Dashboard',        icon: LayoutDashboard },
@@ -24,6 +25,7 @@ const NAV = [
   { key: 'deleted',    label: 'Deleted Invoices', icon: Trash2 },
   { key: 'automation', label: 'Automation',       icon: Bot },
   { key: 'audit',      label: 'Audit Logs',       icon: ScrollText },
+  { key: 'guide',      label: 'How It Works', icon: BookOpen },
 ]
 
 const TITLES = {
@@ -33,8 +35,9 @@ const TITLES = {
   review:     { title: 'Upload Review', subtitle: 'Uploads the portal could not read cleanly' },
   past:       { title: 'Past Invoices', subtitle: 'Paid, void and cancelled' },
   deleted:    { title: 'Deleted Invoices', subtitle: 'Removed from the portal — restorable' },
-  automation: { title: 'Automation', subtitle: 'Switches, settings, emails and job runs' },
+  automation: { title: 'Automation', subtitle: 'Settings, emails and job runs' },
   audit:      { title: 'Audit Logs', subtitle: 'Who did what, when' },
+  guide:      { title: 'How the System Works', subtitle: 'Every step, email and screen explained' },
 }
 
 const VALID = NAV.map(n => n.key)
@@ -116,6 +119,7 @@ export default function AdminApp({ user, onSignOut }) {
         {page === 'deleted'    && <DeletedInvoices />}
         {page === 'automation' && <Automation />}
         {page === 'audit'      && <AuditLogs />}
+        {page === 'guide'      && <HowItWorks onNavigate={setPage} />}
       </PageContent>
     </Shell>
   )
