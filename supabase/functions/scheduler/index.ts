@@ -30,6 +30,13 @@ type JobFn = (admin: SupabaseClient, mode: JobMode, s: Record<string, unknown>) 
 
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3600_000).toISOString()
 
+/** DEV ONLY: app_settings.ryder_only_invoices = ["1232314", …] limits both Ryder jobs to these
+ *  invoices (DEV holds a copy of prod's invoices). Never set it on PROD. */
+function onlyInvoices(s: Record<string, unknown>): string[] | null {
+  const v = s.ryder_only_invoices
+  return Array.isArray(v) && v.length ? v.map(String) : null
+}
+
 // ── auto_advance_paid ────────────────────────────────────────
 const autoAdvancePaid: JobFn = async (admin, mode, s) => {
   const hours = Number(s.auto_paid_hours ?? 12)
@@ -60,10 +67,12 @@ const autoAdvancePaid: JobFn = async (admin, mode, s) => {
 // ── submit_to_ryder ──────────────────────────────────────────
 const submitToRyder: JobFn = async (admin, mode, s) => {
   const days = Number(s.ryder_wait_days ?? 7)
-  const { data: due, error } = await admin.from('invoices')
+  let query = admin.from('invoices')
     .select('*')
     .eq('status', 'Advance Paid').lte('advance_paid_at', hoursAgo(days * 24))
-    .order('advance_paid_at').limit(BATCH)
+  const only = onlyInvoices(s)
+  if (only) query = query.in('invoice_number', only)
+  const { data: due, error } = await query.order('advance_paid_at').limit(BATCH)
   if (error) throw error
   if (mode !== 'live' || !due?.length) return { due: due?.map((i) => i.invoice_number) ?? [] }
 
@@ -85,11 +94,13 @@ const submitToRyder: JobFn = async (admin, mode, s) => {
 const ryderResubmit: JobFn = async (admin, mode, s) => {
   const hours = Number(s.resubmit_hours ?? 48)
   const cutoff = hoursAgo(hours)
-  const { data: candidates, error } = await admin.from('invoices')
+  let query = admin.from('invoices')
     .select('*')
     .in('status', ['Submitted to Ryder', 'Resubmitted'])
     .is('ryder_confirmed_at', null)
-    .order('ryder_submitted_at').limit(200)
+  const only = onlyInvoices(s)
+  if (only) query = query.in('invoice_number', only)
+  const { data: candidates, error } = await query.order('ryder_submitted_at').limit(200)
   if (error) throw error
   const due = (candidates ?? []).filter((i) => {
     const last = i.last_resubmitted_at ?? i.ryder_submitted_at

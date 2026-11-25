@@ -48,6 +48,7 @@ Set: `SMTP_USER`, `SMTP_PASS`, `COMPOSIO_API_KEY`, `COMPOSIO_USER_ID`, `COMPOSIO
 - [ ] `poll_mailbox` = **live**. From now on each handled email is marked read in Gmail (as n8n did).
 
 ## 6. Timed jobs
+- [ ] PROD `app_settings`: **no** `ryder_only_invoices` row (DEV-only test allow-list — with it set, only the listed invoices are ever sent to Ryder).
 - [ ] n8n: deactivate **After 12 hour invoice Status Advance Paid** → Automation `auto_advance_paid` = **live**.
 - [ ] n8n: deactivate **Send Invoice to Ryder on change of status as Advance Paid**, then in n8n → Executions **stop every "waiting" execution** of it (its 7-day Wait would otherwise still send later).
 - [ ] Supabase PROD → Database → Webhooks: **delete** "Send Invoice to Ryder on change of status as Advance Paid" and "Advance Invoice Requested By RzR".
