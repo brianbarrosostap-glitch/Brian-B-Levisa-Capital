@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Save, Send, RefreshCw, Mail } from 'lucide-react'
-import { C, TONE } from '../../tokens'
-import { Card, Btn, SearchBar, DataList } from '../../components/ui'
+import { C, TONE, FONT_MONO } from '../../tokens'
+import { Card, Btn, SearchBar, DataList, Pager, useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
 import { usePersistentState } from '../../hooks/usePersistentState'
 import StatusPill from '../../components/StatusPill'
@@ -39,9 +39,14 @@ const SETTINGS = [
 const EMAIL_TONE = { pending: 'info', sending: 'info', sent: 'success', failed: 'danger', cancelled: 'muted' }
 const RUN_TONE   = { running: 'info', ok: 'success', error: 'danger' }
 
+// Rows per page (first = default). The fetch limits (100 / 50 / 100) are unchanged.
+const EMAIL_SIZES   = [10, 25, 50, 100]
+const JOB_SIZES     = [10, 25, 50]
+const MAILBOX_SIZES = [10, 25, 50, 100]
+
 const inputStyle = {
-  width: '100%', boxSizing: 'border-box', padding: '8px 11px', borderRadius: 8,
-  border: `1.5px solid ${C.borderMd}`, fontSize: 13, color: C.text, outline: 'none',
+  width: '100%', boxSizing: 'border-box', height: 38, padding: '0 11px', borderRadius: 8,
+  border: `1.5px solid ${C.borderMd}`, fontSize: 14.5, color: C.text, outline: 'none',
   background: C.card, fontFamily: 'inherit',
 }
 
@@ -57,42 +62,77 @@ const compact = (v) => { try { return v == null ? '' : JSON.stringify(v) } catch
 const SectionHead = ({ title, subtitle, children }) => (
   <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
     <div style={{ flex: 1, minWidth: 180 }}>
-      <div style={{ fontSize: 14, fontWeight: 700, color: C.textB }}>{title}</div>
-      {subtitle && <div style={{ fontSize: 12, color: C.textMut, marginTop: 2 }}>{subtitle}</div>}
+      <div style={{ fontSize: 15.5, fontWeight: 700, color: C.textB }}>{title}</div>
+      {subtitle && <div style={{ fontSize: 13, color: C.textMut, marginTop: 2 }}>{subtitle}</div>}
     </div>
     {children}
   </div>
 )
 
 const Msg = ({ msg }) => msg ? (
-  <div style={{ fontSize: 12.5, fontWeight: 600, color: (TONE[msg.tone] || TONE.info).text }}>{msg.text}</div>
+  <div style={{ fontSize: 14, fontWeight: 600, color: (TONE[msg.tone] || TONE.info).text }}>{msg.text}</div>
 ) : null
 
 const Trunc = ({ text, max = 260, mono }) => (
   <span title={text || ''} style={{
     display: 'inline-block', maxWidth: max, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-    verticalAlign: 'middle', fontFamily: mono ? 'monospace' : 'inherit', fontSize: mono ? 11.5 : undefined,
+    verticalAlign: 'middle', fontFamily: mono ? FONT_MONO : 'inherit', fontSize: mono ? 12.5 : undefined,
   }}>{text || '—'}</span>
 )
 
 const LoadState = ({ loading, error, children }) => loading
-  ? <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: C.textMut }}>Loading…</div>
+  ? <div style={{ padding: 24, textAlign: 'center', fontSize: 14.5, color: C.textMut }}>Loading…</div>
   : error
-    ? <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: C.red }}>{error}</div>
+    ? <div style={{ padding: 24, textAlign: 'center', fontSize: 14.5, color: C.red }}>{error}</div>
     : children
 
 function useTable(load) {
   const [rows, setRows]       = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState('')
+  const [version, setVersion] = useState(0)   // bumps on every successful load
   const reload = async () => {
     const { data, error: err } = await load()
     if (err) { console.error(err); setError(err.code === '42P01' || err.code === 'PGRST205' ? 'Table not set up yet — run the 20261124 migrations.' : 'Could not load.') }
-    else { setError(''); setRows(data || []) }
+    else { setError(''); setRows(data || []); setVersion(v => v + 1) }
     setLoading(false)
   }
   useEffect(() => { reload() }, [])   // eslint-disable-line react-hooks/exhaustive-deps
-  return { rows, loading, error, reload }
+  return { rows, loading, error, reload, version }
+}
+
+/**
+ * Pages over an already-fetched (and already-searched) list. Each table keeps its own page;
+ * the page goes back to 1 whenever `resetKey` (search text / reload) or the page size changes,
+ * and is clamped if the list shrinks. Page size is remembered per table.
+ */
+function usePaged(rows, sizeKey, sizes, resetKey) {
+  const [stored, setPageSize] = usePersistentState(sizeKey, sizes[0])
+  const pageSize = sizes.includes(stored) ? stored : sizes[0]
+  const key = `${resetKey}|${pageSize}`
+  const [state, setState] = useState({ key, page: 1 })
+  const pages = Math.max(1, Math.ceil(rows.length / pageSize))
+  const page = Math.min(state.key === key ? state.page : 1, pages)
+  return {
+    page, pages, pageSize, total: rows.length,
+    rows: rows.slice((page - 1) * pageSize, page * pageSize),
+    setPage: (n) => setState({ key, page: n }),
+    setPageSize,
+  }
+}
+
+const PagedList = ({ paged, sizes, noun, ...listProps }) => {
+  const isMobile = useIsMobile()
+  return (
+    <>
+      <DataList {...listProps} rows={paged.rows} />
+      {paged.total > 0 && (
+        <Pager page={paged.page} pages={paged.pages} pageSize={paged.pageSize} total={paged.total}
+          rowsShown={paged.rows.length} onPage={paged.setPage} onPageSize={paged.setPageSize}
+          sizes={sizes} noun={noun} compact={isMobile} />
+      )}
+    </>
+  )
 }
 
 /* ── (a) + (b) settings ── */
@@ -177,14 +217,14 @@ function SettingsCards() {
                 <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px', borderTop: i ? `1px solid ${C.border}` : 'none', flexWrap: 'wrap' }}>
                   <div style={{ flex: 1, minWidth: 220 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{s.label}</span>
-                      <code style={{ fontSize: 11, color: C.textMut }}>{s.key}</code>
+                      <span style={{ fontSize: 14.5, fontWeight: 600, color: C.text }}>{s.label}</span>
+                      <code style={{ fontSize: 12, color: C.textMut }}>{s.key}</code>
                     </div>
-                    <div style={{ fontSize: 12, color: C.textSm, marginTop: 2 }}>{s.desc}</div>
+                    <div style={{ fontSize: 13, color: C.textSm, marginTop: 2 }}>{s.desc}</div>
                   </div>
                   <StatusPill label={MODE_SHORT[mode] || mode} tone={MODE_TONE[mode] || 'muted'} small />
                   <select value={mode} onChange={e => { setModes(m => ({ ...m, [s.key]: e.target.value })); setMsgA(null) }}
-                    style={{ ...inputStyle, width: 190, cursor: 'pointer' }}>
+                    aria-label={`${s.label} mode`} className="lc-select" style={{ ...inputStyle, width: 190, cursor: 'pointer' }}>
                     {MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                   </select>
                 </div>
@@ -203,15 +243,15 @@ function SettingsCards() {
           <div style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14 }}>
             {SETTINGS.map(s => (
               <label key={s.key} style={{ display: 'block' }}>
-                <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSm, marginBottom: 5 }}>
+                <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: C.textSm, marginBottom: 5 }}>
                   {s.label}
                   {changedKeys.some(c => c.key === s.key) && <span style={{ color: C.amber, fontWeight: 600 }}> · changed</span>}
                 </span>
                 <input value={draft[s.key] ?? ''} inputMode={s.type === 'number' ? 'numeric' : undefined}
                   type={s.type === 'number' ? 'number' : 'text'} min={s.type === 'number' ? 0 : undefined}
                   onChange={e => { const v = e.target.value; setDraft(d => ({ ...d, [s.key]: v })); setMsgB(null) }}
-                  style={inputStyle} />
-                <span style={{ display: 'block', fontSize: 11, color: C.textMut, marginTop: 4 }}>{s.hint}</span>
+                  className="lc-select" style={inputStyle} />
+                <span style={{ display: 'block', fontSize: 12, color: C.textMut, marginTop: 4 }}>{s.hint}</span>
               </label>
             ))}
           </div>
@@ -260,16 +300,17 @@ function EmailsCard() {
   const q = search.trim().toLowerCase()
   const rows = t.rows.filter(r => !q || [r.kind, r.subject, r.status, r.last_error, r.redirected_to, ...(r.to_emails || [])]
     .some(v => String(v || '').toLowerCase().includes(q)))
+  const paged = usePaged(rows, 'admin.automation.emails.pageSize', EMAIL_SIZES, `${q}|${t.version}`)
 
   const columns = [
     { key: 'created_at', label: 'Created', render: r => <span style={{ color: C.textSm, whiteSpace: 'nowrap' }}>{fmtDateTime(r.created_at)}</span> },
-    { key: 'kind', label: 'Kind', render: r => <code style={{ fontSize: 11.5 }}>{r.kind || '—'}</code> },
+    { key: 'kind', label: 'Kind', render: r => <code style={{ fontSize: 12.5 }}>{r.kind || '—'}</code> },
     {
       key: 'to', label: 'To',
       render: r => (
         <div>
           <Trunc text={(r.to_emails || []).join(', ')} max={200} />
-          {r.redirected_to && <div style={{ fontSize: 11, color: C.amber }}>dev → {r.redirected_to}</div>}
+          {r.redirected_to && <div style={{ fontSize: 12, color: C.amber }}>dev → {r.redirected_to}</div>}
         </div>
       ),
     },
@@ -290,13 +331,13 @@ function EmailsCard() {
         <SearchBar placeholder="Search kind, recipient, subject, status…" value={search} onChange={setSearch} />
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
           <input value={testTo} onChange={e => setTestTo(e.target.value)} placeholder="test@example.com"
-            onKeyDown={e => e.key === 'Enter' && send('test')}
-            style={{ ...inputStyle, width: 210, padding: '6px 10px', fontSize: 12.5 }} />
+            onKeyDown={e => e.key === 'Enter' && send('test')} aria-label="Test email recipient"
+            className="lc-select" style={{ ...inputStyle, width: 210, height: 34, padding: '0 10px', fontSize: 14 }} />
           <Btn variant="secondary" size="sm" onClick={() => send('test')} disabled={!!busy}><Mail size={12} /> {busy === 'test' ? 'Sending…' : 'Send test email'}</Btn>
         </div>
       </div>
       {result && (
-        <div style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}`, background: (TONE[result.tone] || TONE.info).bg, color: (TONE[result.tone] || TONE.info).text, fontSize: 12.5 }}>
+        <div style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}`, background: (TONE[result.tone] || TONE.info).bg, color: (TONE[result.tone] || TONE.info).text, fontSize: 14 }}>
           <div style={{ fontWeight: 600 }}>{result.text}</div>
           {result.errors?.length > 0 && (
             <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
@@ -306,7 +347,8 @@ function EmailsCard() {
         </div>
       )}
       <LoadState loading={t.loading} error={t.error}>
-        <DataList columns={columns} rows={rows} emptyText={t.rows.length ? 'No emails match your search.' : 'No emails yet.'} />
+        <PagedList paged={paged} sizes={EMAIL_SIZES} noun="emails" columns={columns}
+          emptyText={t.rows.length ? 'No emails match your search.' : 'No emails yet.'} />
       </LoadState>
     </Card>
   )
@@ -322,6 +364,7 @@ function JobRunsCard() {
   const q = search.trim().toLowerCase()
   const rows = t.rows.filter(r => !q || [r.job, r.mode, r.status, r.error, compact(r.summary)]
     .some(v => String(v || '').toLowerCase().includes(q)))
+  const paged = usePaged(rows, 'admin.automation.jobs.pageSize', JOB_SIZES, `${q}|${t.version}`)
 
   const duration = (r) => {
     if (!r.finished_at) return r.status === 'running' ? 'running…' : '—'
@@ -330,7 +373,7 @@ function JobRunsCard() {
   }
 
   const columns = [
-    { key: 'job', label: 'Job', render: r => <code style={{ fontSize: 11.5 }}>{r.job}</code> },
+    { key: 'job', label: 'Job', render: r => <code style={{ fontSize: 12.5 }}>{r.job}</code> },
     { key: 'mode', label: 'Mode', render: r => <StatusPill label={r.mode} tone={MODE_TONE[r.mode] || 'muted'} small /> },
     { key: 'status', label: 'Status', render: r => <StatusPill label={r.status} tone={RUN_TONE[r.status] || 'muted'} small /> },
     { key: 'started_at', label: 'Started', render: r => <span style={{ color: C.textSm, whiteSpace: 'nowrap' }}>{fmtDateTime(r.started_at)}</span> },
@@ -350,7 +393,8 @@ function JobRunsCard() {
         <Btn variant="ghost" size="sm" onClick={t.reload}><RefreshCw size={12} /> Refresh</Btn>
       </SectionHead>
       <LoadState loading={t.loading} error={t.error}>
-        <DataList columns={columns} rows={rows} emptyText={t.rows.length ? 'No runs match your search.' : 'No job runs yet.'} />
+        <PagedList paged={paged} sizes={JOB_SIZES} noun="runs" columns={columns}
+          emptyText={t.rows.length ? 'No runs match your search.' : 'No job runs yet.'} />
       </LoadState>
     </Card>
   )
@@ -368,10 +412,11 @@ function MailboxCard() {
     .map(r => ({ ...r, id: r.message_id }))
     .filter(r => !q || [r.kind, r.from_email, r.subject, r.result, ...(r.invoice_numbers || [])]
       .some(v => String(v || '').toLowerCase().includes(q)))
+  const paged = usePaged(rows, 'admin.automation.mailbox.pageSize', MAILBOX_SIZES, `${q}|${t.version}`)
 
   const columns = [
     { key: 'processed_at', label: 'Processed', render: r => <span style={{ color: C.textSm, whiteSpace: 'nowrap' }}>{fmtDateTime(r.processed_at)}</span> },
-    { key: 'kind', label: 'Kind', render: r => <code style={{ fontSize: 11.5 }}>{r.kind}</code> },
+    { key: 'kind', label: 'Kind', render: r => <code style={{ fontSize: 12.5 }}>{r.kind}</code> },
     { key: 'from_email', label: 'From', render: r => <Trunc text={r.from_email} max={200} /> },
     { key: 'subject', label: 'Subject', render: r => <Trunc text={r.subject} max={260} /> },
     {
@@ -389,7 +434,8 @@ function MailboxCard() {
         <Btn variant="ghost" size="sm" onClick={t.reload}><RefreshCw size={12} /> Refresh</Btn>
       </SectionHead>
       <LoadState loading={t.loading} error={t.error}>
-        <DataList columns={columns} rows={rows} emptyText={t.rows.length ? 'No emails match your search.' : 'No mailbox activity yet.'} />
+        <PagedList paged={paged} sizes={MAILBOX_SIZES} noun="emails" columns={columns}
+          emptyText={t.rows.length ? 'No emails match your search.' : 'No mailbox activity yet.'} />
       </LoadState>
     </Card>
   )

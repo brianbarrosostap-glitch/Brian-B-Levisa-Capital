@@ -37,16 +37,16 @@ function RemoveModal({ inv, onClose, onConfirm }) {
             <X size={18} color={C.red} />
           </div>
           <div>
-            <div style={{ fontSize: 13.5, fontWeight: 600, color: C.text, marginBottom: 6 }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 6 }}>
               Permanently delete invoice {inv.invoice_number} ({fmt(inv.invoice_amount)})?
             </div>
-            <div style={{ fontSize: 12.5, color: C.textSm, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 14, color: C.textSm, lineHeight: 1.5 }}>
               This will remove it from the portal. The Drive file will be moved to the archive folder automatically.
             </div>
           </div>
         </div>
         {error && (
-          <div style={{ marginTop: 12, background: '#fff5f5', border: '1px solid #fecaca', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, color: '#991b1b' }}>
+          <div style={{ marginTop: 12, background: '#fff5f5', border: '1px solid #fecaca', borderRadius: 8, padding: '9px 12px', fontSize: 14, color: '#991b1b' }}>
             {error}
           </div>
         )}
@@ -86,28 +86,28 @@ function SubmitModal({ selected, onClose, onSubmit }) {
       <ModalBody>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', marginBottom: 20 }}>
           <div style={{ padding: '14px 16px', textAlign: 'center', borderRight: `1px solid ${C.border}` }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Invoices</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: C.textB }}>{selected.length}</div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Invoices</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: C.textB }}>{selected.length}</div>
           </div>
           <div style={{ padding: '14px 16px', textAlign: 'center' }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Invoice Total</div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: C.textB, fontVariantNumeric: 'tabular-nums' }}>{fmt(total)}</div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Invoice Total</div>
+            <div style={{ fontSize: 17.5, fontWeight: 800, color: C.textB, fontVariantNumeric: 'tabular-nums' }}>{fmt(total)}</div>
           </div>
         </div>
 
-        <div style={{ fontSize: 11, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Included Invoices</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Included Invoices</div>
         {selected.map(inv => (
           <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: `1px solid ${C.border}` }}>
-            <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13 }}>{inv.invoice_number}</span>
-            <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13 }}>{fmt(inv.invoice_amount)}</span>
+            <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14.5 }}>{inv.invoice_number}</span>
+            <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 14.5 }}>{fmt(inv.invoice_amount)}</span>
           </div>
         ))}
 
-        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 13px', fontSize: 12.5, color: '#1e40af', marginTop: 16 }}>
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 13px', fontSize: 14, color: '#1e40af', marginTop: 16 }}>
           Funds are wired after Levisa reviews and confirms. Your invoices will show as <strong>Submitted</strong> until then.
         </div>
         {error && (
-          <div style={{ background: '#fff5f5', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 13px', fontSize: 12.5, color: '#991b1b', marginTop: 10 }}>
+          <div style={{ background: '#fff5f5', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 13px', fontSize: 14, color: '#991b1b', marginTop: 10 }}>
             {error}
           </div>
         )}
@@ -179,7 +179,7 @@ export default function InvoicesToAdvance() {
   return (
     <div style={{ position: 'relative' }}>
       {/* Sync line */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14, fontSize: 11.5, color: C.textMut }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14, fontSize: 12.5, color: C.textMut }}>
         <svg width="14" height="14" viewBox="0 0 87.3 78" fill="none" style={{ flexShrink: 0 }}>
           <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5l5.4 9.35z" fill="#0066DA"/>
           <path d="M43.65 25L29.9 1.2C28.55 2 27.4 3.1 26.6 4.5L1.2 48.35C.4 49.75 0 51.3 0 52.85h27.5L43.65 25z" fill="#00AC47"/>
@@ -198,12 +198,12 @@ export default function InvoicesToAdvance() {
 
       <Card noPad>
         {loading ? (
-          <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>Loading invoices…</div>
+          <div style={{ padding: 32, textAlign: 'center', fontSize: 14.5, color: C.textMut }}>Loading invoices…</div>
         ) : isMobile ? (
           /* ── Mobile: stacked selectable cards ── */
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 10 }}>
             {invoices.length === 0 && (
-              <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: C.textMut }}>No eligible invoices found.</div>
+              <div style={{ padding: 24, textAlign: 'center', fontSize: 14.5, color: C.textMut }}>No eligible invoices found.</div>
             )}
             {invoices.map(inv => {
               const on = selected.has(inv.id)
@@ -213,7 +213,7 @@ export default function InvoicesToAdvance() {
                   style={{ border: `1px solid ${on ? C.primary : C.border}`, borderRadius: 10, padding: '12px 14px', background: on ? '#f1faf5' : '#fff', cursor: 'pointer' }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14 }}>{inv.invoice_number}</span>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 15.5 }}>{inv.invoice_number}</span>
                     <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${on ? C.primary : C.borderMd}`, background: on ? C.primary : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       {on && <Check size={11} color="#fff" strokeWidth={3} />}
                     </div>
@@ -223,7 +223,7 @@ export default function InvoicesToAdvance() {
                     ['Unit #', inv.unit_number],
                     ['Invoice Amount', fmt(inv.invoice_amount)],
                   ].map(([k, v]) => (
-                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 12.5 }}>
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 14 }}>
                       <span style={{ color: C.textMut, fontWeight: 600 }}>{k}</span>
                       <span style={{ fontVariantNumeric: 'tabular-nums', color: C.text }}>{v}</span>
                     </div>
@@ -285,7 +285,7 @@ export default function InvoicesToAdvance() {
                 )
               })}
               {invoices.length === 0 && (
-                <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>No eligible invoices found.</td></tr>
+                <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', fontSize: 14.5, color: C.textMut }}>No eligible invoices found.</td></tr>
               )}
             </tbody>
           </table>
@@ -297,18 +297,18 @@ export default function InvoicesToAdvance() {
       <div style={{ position: 'sticky', bottom: 16, marginTop: 16, background: '#fff', border: `1.5px solid ${C.border}`, borderRadius: 10, padding: '13px 22px', boxShadow: '0 4px 24px rgba(0,0,0,0.10)', display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 28, flex: 1, minWidth: 200 }}>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Selected</div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{selectedInvoices.length} of {invoices.length}</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Selected</div>
+            <div style={{ fontSize: 18.5, fontWeight: 700, color: C.text }}>{selectedInvoices.length} of {invoices.length}</div>
           </div>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Invoice Total</div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: C.text, fontVariantNumeric: 'tabular-nums' }}>{fmt(totalAmount)}</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.textMut, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Invoice Total</div>
+            <div style={{ fontSize: 18.5, fontWeight: 700, color: C.text, fontVariantNumeric: 'tabular-nums' }}>{fmt(totalAmount)}</div>
           </div>
         </div>
         <button
           onClick={() => selectedInvoices.length > 0 && setSubmitModal(true)}
           disabled={selectedInvoices.length === 0}
-          style={{ padding: '10px 22px', borderRadius: 8, border: 'none', background: selectedInvoices.length === 0 ? C.border : C.primary, color: selectedInvoices.length === 0 ? C.textMut : '#000', fontWeight: 700, fontSize: 13.5, cursor: selectedInvoices.length === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', flexShrink: 0 }}
+          style={{ padding: '10px 22px', borderRadius: 8, border: 'none', background: selectedInvoices.length === 0 ? C.border : C.primary, color: selectedInvoices.length === 0 ? C.textMut : '#000', fontWeight: 700, fontSize: 15, cursor: selectedInvoices.length === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', flexShrink: 0 }}
         >
           Submit Advance Request
         </button>

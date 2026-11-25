@@ -102,15 +102,15 @@ export default function PastInvoices() {
         </div>
 
         {loading ? (
-          <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>Loading past invoices…</div>
+          <div style={{ padding: 32, textAlign: 'center', fontSize: 14.5, color: C.textMut }}>Loading past invoices…</div>
         ) : error ? (
-          <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.red }}>{error}</div>
+          <div style={{ padding: 32, textAlign: 'center', fontSize: 14.5, color: C.red }}>{error}</div>
         ) : (
           <>
             <DataList columns={columns} rows={rows} onRowClick={setDetail}
               emptyText={invoices.length === 0 ? 'No paid or cancelled invoices yet.' : 'No invoices match your filters.'} />
             {list.length > 0 && (
-              <div style={{ padding: '10px 14px', borderTop: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 12.5, color: C.textSm }}>
+              <div style={{ padding: '10px 14px', borderTop: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 14, color: C.textSm }}>
                 <span>
                   {cur * PAGE_SIZE + 1}–{Math.min((cur + 1) * PAGE_SIZE, list.length)} of {list.length}
                   {' · '}total <strong style={{ color: C.text, fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(total)}</strong>

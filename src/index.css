@@ -58,6 +58,82 @@ input, textarea, select {
 ::-webkit-scrollbar-thumb { background: #c4cdd8; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #8fa3b0; }
 
+body { color: #0d1b14; text-rendering: optimizeLegibility; }
+
+/* ── Interaction states (inline styles can't express :hover / :focus) ── */
+.lc-nav { transition: background .18s ease, color .18s ease, box-shadow .18s ease, border-color .18s ease; }
+.lc-nav .lc-nav-icon { transition: color .18s ease, opacity .18s ease; }
+.lc-nav:not(.is-active):hover { background: rgba(255,255,255,0.07) !important; color: #fff !important; }
+.lc-nav:not(.is-active):hover .lc-nav-icon { opacity: 1 !important; }
+.lc-nav:active { transform: translateY(0.5px); }
+.lc-signout:hover { border-color: rgba(255,255,255,0.22) !important; }
+.lc-nav:focus-visible, .lc-focus:focus-visible { outline: 2px solid #00a870; outline-offset: 2px; }
+
+.lc-icon-btn { transition: background .15s ease, border-color .15s ease; }
+.lc-icon-btn:hover { background: #f8fafc !important; border-color: #c4cdd8 !important; }
+
+.lc-card { transition: box-shadow .18s ease, border-color .18s ease; }
+.lc-card:hover { box-shadow: 0 2px 4px rgba(16,24,40,0.05), 0 8px 20px rgba(16,24,40,0.07) !important; }
+
+.lc-row { transition: background .12s ease; }
+.lc-row:not(.is-sel):hover { background: #f9fbfa !important; }
+.lc-row-alert:hover { background: #fff3f3 !important; }
+
+.lc-seg { transition: background .15s ease, color .15s ease, box-shadow .15s ease; }
+.lc-seg:not(.is-on):hover { background: #fff !important; color: #0d1b14 !important; }
+
+.lc-link { text-decoration-color: rgba(0,121,83,0.35) !important; transition: text-decoration-color .15s ease; }
+.lc-link:hover { text-decoration-color: currentColor !important; }
+
+.lc-date { transition: border-color .15s ease, box-shadow .15s ease; color-scheme: light; }
+.lc-date:focus { outline: none; border-color: #007953 !important; box-shadow: 0 0 0 3px rgba(0,121,83,0.12); }
+.lc-date::-webkit-calendar-picker-indicator { opacity: .5; cursor: pointer; }
+.lc-date::-webkit-calendar-picker-indicator:hover { opacity: .85; }
+
+/* Buttons (Btn) — darker on hover, same colours */
+.lc-btn { transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, filter .15s ease; }
+.lc-btn:disabled { pointer-events: none; }
+.lc-btn-primary:hover   { background: #005741 !important; }
+.lc-btn-danger:hover    { filter: brightness(0.93); }
+.lc-btn-secondary:hover { background: #f8fafc !important; border-color: #8fa3b0 !important; }
+.lc-btn-ghost:hover     { background: #f1f5f9 !important; }
+.lc-btn-outline:hover, .lc-btn-subtle:hover { background: #eaf4ef !important; }
+
+/* Red text-only action (Reject) and small delete buttons — red tint on hover */
+.lc-btn-redghost:hover { background: #fee2e2 !important; }
+.lc-del { transition: background .15s ease, border-color .15s ease; }
+.lc-del:hover { background: #fee2e2 !important; border-color: #fecaca !important; }
+
+/* Search box focus ring */
+.lc-search { transition: border-color .15s ease, box-shadow .15s ease; }
+.lc-search:hover { border-color: #c4cdd8 !important; }
+.lc-search:focus-within { border-color: #007953 !important; box-shadow: 0 0 0 3px rgba(0,121,83,0.12) !important; }
+
+/* Dropdown menu items (KebabMenu, FilterChip) */
+.lc-menu-item { transition: background .1s ease; }
+.lc-menu-item:hover { background: #f1f5f9 !important; }
+.lc-menu-item.is-danger:hover { background: #fee2e2 !important; }
+
+/* Data table rows — hover tint on every cell (cells carry their own borders) */
+.lc-trow { transition: background .12s ease; }
+.lc-trow:hover { background: #f4faf7 !important; }
+
+/* Clickable dashboard tiles */
+.lc-tile { cursor: pointer; }
+.lc-tile:hover { border-color: #c4cdd8 !important; }
+.lc-tile .lc-tile-go { opacity: 0; transform: translateX(-3px); transition: opacity .15s ease, transform .15s ease; }
+.lc-tile:hover .lc-tile-go, .lc-tile:focus-visible .lc-tile-go { opacity: 1; transform: none; }
+.lc-tile:focus-visible { outline: 2px solid #00a870; outline-offset: 2px; }
+
+/* FileLink "View invoice / View cheque" buttons — same blue, deeper on hover */
+.lc-filebtn { transition: background .15s ease, border-color .15s ease; }
+.lc-filebtn:hover { background: #dbeafe !important; border-color: #93c5fd !important; }
+
+/* Plain selects (modal footer etc.) — focus ring like the date inputs */
+.lc-select { transition: border-color .15s ease, box-shadow .15s ease; }
+.lc-select:hover { border-color: #8fa3b0 !important; }
+.lc-select:focus { outline: none; border-color: #007953 !important; box-shadow: 0 0 0 3px rgba(0,121,83,0.12); }
+
 /* Spinner used by FileLink / UploadDocumentModal (Lucide Loader2) */
 @keyframes lc-spin { to { transform: rotate(360deg); } }
 .lc-spin { animation: lc-spin 1s linear infinite; }

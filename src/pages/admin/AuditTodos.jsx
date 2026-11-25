@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Check, Landmark, Banknote, ChevronDown, ChevronUp, MailWarning } from 'lucide-react'
-import { C } from '../../tokens'
-import { useIsMobile } from '../../components/ui'
+import { Check, Landmark, Banknote, ChevronDown, ChevronUp, MailWarning, Upload } from 'lucide-react'
+import { C, R, shadow, FONT_MONO } from '../../tokens'
+import { useIsMobile, PartyTag } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
 import InvoiceDetailModal from './InvoiceDetailModal'
 import { usePersistentState } from '../../hooks/usePersistentState'
 import FileLink from '../../components/FileLink'
+import UploadDocumentModal from '../../components/UploadDocumentModal'
 import { hasFile, invoiceFileRef, chequeFileRef } from '../../lib/files'
 
 const fmt = n => n == null ? '—' : '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -64,20 +65,31 @@ function chequeInvoices(todo) {
 // uploads) is merged in by load() as `cheque_storage_path`.
 const chequeTodoFileRef = (todo) => chequeFileRef({ storage_path: todo.cheque_storage_path, drive_file_url: todo.cheque_drive_url })
 
-const metaText = { fontSize: 11.5, color: C.textSm, whiteSpace: 'nowrap' }
-const Dot = () => <span style={{ color: C.borderMd }}>•</span>
+const metaText = { fontSize: 12.5, color: C.textSm, whiteSpace: 'nowrap', lineHeight: 1.5 }
+const Dot = () => <span aria-hidden style={{ color: C.borderMd, fontSize: 11 }}>•</span>
 
 // Invoice number that opens the invoice detail modal.
 const InvLink = ({ n, onOpen, style }) => (
   <button type="button" onClick={() => onOpen({ number: n })} title="Open invoice"
-    style={{ padding: 0, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'monospace',
-      color: C.primary, textDecoration: 'underline', textUnderlineOffset: 2, fontSize: 'inherit', ...style }}>
+    className="lc-link lc-focus"
+    style={{ padding: 0, border: 'none', background: 'none', cursor: 'pointer', fontFamily: FONT_MONO, fontWeight: 600,
+      color: C.primary, textDecoration: 'underline', textUnderlineOffset: 3, fontSize: 'inherit', ...style }}>
     {n}
   </button>
 )
 
+// ADV number → opens Master filtered to that advance (with its totals summary).
+const AdvLink = ({ n, onOpenMaster, style, children }) => onOpenMaster ? (
+  <button type="button" title="Open this advance in Master" className="lc-link lc-focus"
+    onClick={() => onOpenMaster({ tab: 'active', search: fmtAdv(n), status: '' })}
+    style={{ padding: 0, border: 'none', background: 'none', cursor: 'pointer', font: 'inherit',
+      color: C.primary, textDecoration: 'underline', textUnderlineOffset: 3, ...style }}>
+    {children ?? fmtAdv(n)}
+  </button>
+) : <span style={style}>{children ?? fmtAdv(n)}</span>
+
 /* ── One checkable row ── */
-function TodoRow({ todo, selected, busy, onSelect, onOpenInvoice }) {
+function TodoRow({ todo, selected, busy, onSelect, onOpenInvoice, onOpenMaster }) {
   const [open, setOpen] = useState(false)
   const isCheque  = todo.kind === 'cheque'
   const isUnconf  = todo.kind === 'unconfirmed'
@@ -92,45 +104,56 @@ function TodoRow({ todo, selected, busy, onSelect, onOpenInvoice }) {
     && Math.abs(Number(todo.cheque_amount) - Number(todo.cheque_invoice_total)) >= 0.01
 
   return (
-    <div style={{
-      display: 'flex', alignItems: 'flex-start', gap: 12, padding: '11px 14px',
-      borderBottom: `1px solid ${C.border}`, opacity: busy ? 0.6 : 1, transition: 'opacity .15s, background .15s',
+    <div className={`lc-row${selected ? ' is-sel' : ''}`} style={{
+      display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 14px',
+      borderBottom: `1px solid ${C.borderLt}`, opacity: busy ? 0.6 : 1,
       background: selected ? '#f0faf5' : todo.done ? '#fafbfc' : '#fff',
+      boxShadow: selected ? `inset 3px 0 0 ${C.primary}` : 'none',
     }}>
       {/* Checkbox only SELECTS — nothing is saved until "Submit" in the action bar */}
       <button type="button" onClick={() => onSelect(todo)} disabled={busy}
         title={selected ? 'Unselect' : todo.done ? 'Select to re-open' : isUnconf ? 'Select as investigated' : `Select — verified against ${compareTo}`}
+        className="lc-focus" aria-pressed={selected}
         style={{
-          width: 20, height: 20, marginTop: 1, borderRadius: 5, flexShrink: 0, padding: 0,
-          border: `2px solid ${selected ? C.primary : C.borderMd}`,
+          width: 18, height: 18, marginTop: 1, borderRadius: 5, flexShrink: 0, padding: 0, boxSizing: 'border-box',
+          border: `1.5px solid ${selected ? C.primary : C.borderMd}`,
           background: selected ? C.primary : '#fff', cursor: busy ? 'wait' : 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: selected ? '0 1px 2px rgba(0,87,65,0.25)' : '0 1px 1px rgba(16,24,40,0.04)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .12s, border-color .12s',
         }}>
-        {selected && <Check size={12} color="#fff" strokeWidth={3} />}
+        {selected && <Check size={11} color="#fff" strokeWidth={3.2} />}
       </button>
 
       <div style={{ flex: 1, minWidth: 0 }}>
         {/* Line 1 — identifier + amount */}
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minHeight: 20 }}>
           {isUnconf ? (
-            <button type="button" onClick={() => onOpenInvoice({ id: todo.invoice_id })} title="Open invoice" style={{
+            <button type="button" onClick={() => onOpenInvoice({ id: todo.invoice_id })} title="Open invoice"
+              className={todo.done ? 'lc-focus' : 'lc-link lc-focus'} style={{
               padding: 0, border: 'none', background: 'none', cursor: 'pointer',
-              fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: C.primary,
-              textDecoration: todo.done ? 'line-through' : 'underline', textUnderlineOffset: 2,
+              fontFamily: FONT_MONO, fontWeight: 700, fontSize: 14.5, color: C.primary,
+              textDecoration: todo.done ? 'line-through' : 'underline', textUnderlineOffset: 3,
             }}>{title}</button>
           ) : (
-            <span style={{
-              fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: C.text,
-              textDecoration: todo.done ? 'line-through' : 'none',
-            }}>{title}</span>
+            !isCheque && todo.advance_number != null && onOpenMaster ? (
+              <AdvLink n={todo.advance_number} onOpenMaster={onOpenMaster} style={{
+                fontFamily: FONT_MONO, fontWeight: 700, fontSize: 14.5,
+                textDecoration: todo.done ? 'line-through' : 'underline',
+              }} />
+            ) : (
+              <span style={{
+                fontFamily: FONT_MONO, fontWeight: 700, fontSize: 14.5, color: C.textB,
+                textDecoration: todo.done ? 'line-through' : 'none',
+              }}>{title}</span>
+            )
           )}
-          <span style={{ fontWeight: 800, fontSize: 14.5, color: todo.done ? C.textMut : C.primary, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+          <span style={{ fontWeight: 700, fontSize: 16, letterSpacing: '-0.01em', color: todo.done ? C.textMut : C.primary, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
             {fmt(amount)}
           </span>
         </div>
 
         {/* Line 2 — compact meta */}
-        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 8px', marginTop: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '3px 7px', marginTop: 5 }}>
           {isUnconf ? (
             <>
               <span style={metaText}>
@@ -141,8 +164,8 @@ function TodoRow({ todo, selected, busy, onSelect, onOpenInvoice }) {
               <span style={{ ...metaText, color: todo.resubmit_count >= UNCONF_MIN_ATTEMPTS ? C.red : C.textSm, fontWeight: 600 }}>
                 Resent {todo.resubmit_count || 0}×
               </span>
-              {todo.po_number && <><Dot /><span style={metaText}>PO <span style={{ fontFamily: 'monospace' }}>{todo.po_number}</span></span></>}
-              {todo.advance_number != null && <><Dot /><span style={metaText}>{fmtAdv(todo.advance_number)}</span></>}
+              {todo.po_number && <><Dot /><span style={metaText}>PO <span style={{ fontFamily: FONT_MONO, color: C.text }}>{todo.po_number}</span></span></>}
+              {todo.advance_number != null && <><Dot /><span style={metaText}><AdvLink n={todo.advance_number} onOpenMaster={onOpenMaster} style={{ fontWeight: 600 }} /></span></>}
               {hasFile(invoiceFileRef(todo)) && (
                 <>
                   <Dot />
@@ -160,8 +183,8 @@ function TodoRow({ todo, selected, busy, onSelect, onOpenInvoice }) {
                 <span style={metaText}>Inv <InvLink n={invoices[0].n} onOpen={onOpenInvoice} /></span>
               ) : (
                 <button type="button" onClick={() => setOpen(o => !o)} style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 8px',
-                  borderRadius: 9999, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                  display: 'inline-flex', alignItems: 'center', gap: 4, height: 20, padding: '0 8px',
+                  borderRadius: 9999, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
                   border: `1px solid ${mismatch ? C.red : C.border}`,
                   background: mismatch ? C.redLt : '#f1f5f9', color: mismatch ? C.red : C.textSm,
                 }}>
@@ -178,7 +201,11 @@ function TodoRow({ todo, selected, busy, onSelect, onOpenInvoice }) {
             </>
           ) : (
             <>
-              <span style={metaText}>{todo.advance_invoice_count || 0} invoice{todo.advance_invoice_count === 1 ? '' : 's'}</span>
+              <span style={metaText}>
+                <AdvLink n={todo.advance_number} onOpenMaster={onOpenMaster} style={{ fontWeight: 600 }}>
+                  {todo.advance_invoice_count || 0} invoice{todo.advance_invoice_count === 1 ? '' : 's'}
+                </AdvLink>
+              </span>
               {todo.advance_client_name && <><Dot /><span style={metaText}>{todo.advance_client_name}</span></>}
               <Dot />
               {todo.advance_paid_count > 0
@@ -196,7 +223,7 @@ function TodoRow({ todo, selected, busy, onSelect, onOpenInvoice }) {
               gap: '2px 14px', padding: '8px 10px', maxHeight: 150, overflowY: 'auto',
             }}>
               {invoices.map(({ n, amt }) => (
-                <div key={n} style={{ display: 'flex', justifyContent: 'space-between', gap: 6, fontSize: 11.5, padding: '2px 0' }}>
+                <div key={n} style={{ display: 'flex', justifyContent: 'space-between', gap: 6, fontSize: 12.5, padding: '2px 0' }}>
                   <InvLink n={n} onOpen={onOpenInvoice} />
                   {amt && <span style={{ color: C.textSm, fontVariantNumeric: 'tabular-nums' }}>{amt}</span>}
                 </div>
@@ -204,7 +231,7 @@ function TodoRow({ todo, selected, busy, onSelect, onOpenInvoice }) {
             </div>
             {hasTotal && (
               <div style={{
-                display: 'flex', justifyContent: 'space-between', padding: '6px 10px', fontSize: 11.5, fontWeight: 700,
+                display: 'flex', justifyContent: 'space-between', padding: '6px 10px', fontSize: 12.5, fontWeight: 700,
                 borderTop: `1px solid ${C.border}`, background: mismatch ? C.redLt : '#f0faf5', color: mismatch ? C.red : C.primary,
               }}>
                 <span>Invoices total {mismatch ? '— differs from cheque' : '✓ matches cheque'}</span>
@@ -215,7 +242,7 @@ function TodoRow({ todo, selected, busy, onSelect, onOpenInvoice }) {
         )}
 
         {todo.done && (
-          <div style={{ fontSize: 11, color: C.primary, marginTop: 4, fontWeight: 600 }}>
+          <div style={{ fontSize: 12, color: C.primary, marginTop: 4, fontWeight: 600 }}>
             ✓ {isUnconf ? 'Investigated' : 'Verified'} {fmtDate(todo.done_at)}{todo.done_by_name ? ` by ${todo.done_by_name}` : ''}
           </div>
         )}
@@ -225,41 +252,50 @@ function TodoRow({ todo, selected, busy, onSelect, onOpenInvoice }) {
 }
 
 /* ── One column (cheques / advances / unconfirmed) ── */
-function TodoColumn({ icon: Icon, title, party, hint, items, selected, busy, onSelect, onSelectAll, onOpenInvoice, emptyText }) {
+function TodoColumn({ icon: Icon, title, party, hint, items, selected, busy, onSelect, onSelectAll, onOpenInvoice, onOpenMaster, emptyText, action }) {
   const allOn  = items.length > 0 && items.every(t => selected.has(t.id))
   const someOn = !allOn && items.some(t => selected.has(t.id))
   return (
-    <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', minWidth: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: '#f8fafb', borderBottom: `1px solid ${C.border}` }}>
-        <Icon size={15} color={C.primary} />
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>{title}</span>
-        <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em', color: C.textSm, background: C.border, borderRadius: 5, padding: '1px 6px' }}>{party}</span>
-        <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: C.textMut }}>{items.length}</span>
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: R.lg - 2, overflow: 'hidden', minWidth: 0, display: 'flex', flexDirection: 'column', background: '#fff' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 46, padding: '8px 12px', background: C.panel, borderBottom: `1px solid ${C.borderLt}` }}>
+        <span style={{ width: 26, height: 26, borderRadius: 7, background: C.primLt, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Icon size={14} color={C.primary} strokeWidth={2} />
+        </span>
+        <span title={title} style={{ fontSize: 14.5, fontWeight: 600, color: C.textB, lineHeight: 1.3, minWidth: 0 }}>{title}</span>
+        <PartyTag party={party} />
+        {action && <span style={{ marginLeft: 'auto', display: 'inline-flex' }}>{action}</span>}
+        <span style={{
+          marginLeft: action ? 0 : 'auto', minWidth: 22, height: 20, padding: '0 6px', boxSizing: 'border-box', borderRadius: 9999,
+          background: items.length ? '#fff' : 'transparent', border: `1px solid ${items.length ? C.border : 'transparent'}`,
+          fontSize: 12, fontWeight: 700, color: C.textSm, fontVariantNumeric: 'tabular-nums',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}>{items.length}</span>
         {items.length > 0 && (
           <button type="button" onClick={() => onSelectAll(items, !allOn)} disabled={busy}
             title={allOn ? 'Unselect all' : 'Select all in this column'}
+            className="lc-icon-btn lc-focus"
             style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 8px', borderRadius: 6,
-              border: `1px solid ${allOn || someOn ? C.primary : C.border}`, background: '#fff',
-              color: allOn || someOn ? C.primary : C.textSm, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+              display: 'inline-flex', alignItems: 'center', gap: 4, height: 24, padding: '0 9px', borderRadius: R.sm,
+              border: `1px solid ${allOn || someOn ? C.primary : C.border}`, background: allOn || someOn ? C.primLt : '#fff',
+              color: allOn || someOn ? C.primary : C.textSm, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
             }}>
             {allOn ? <Check size={11} strokeWidth={3} /> : someOn ? '–' : null} All
           </button>
         )}
       </div>
       {hint && (
-        <div style={{ padding: '6px 12px', fontSize: 11, color: C.textMut, borderBottom: `1px solid ${C.border}` }}>{hint}</div>
+        <div style={{ padding: '7px 14px', fontSize: 12.5, color: C.textMut, borderBottom: `1px solid ${C.borderLt}`, lineHeight: 1.4 }}>{hint}</div>
       )}
-      <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+      <div style={{ maxHeight: 330, overflowY: 'auto', flex: 1 }}>
         {items.length === 0
-          ? <div style={{ padding: 18, textAlign: 'center', fontSize: 12.5, color: C.textMut }}>{emptyText}</div>
-          : items.map(t => <TodoRow key={t.id} todo={t} selected={selected.has(t.id)} busy={busy} onSelect={onSelect} onOpenInvoice={onOpenInvoice} />)}
+          ? <div style={{ padding: '28px 18px', textAlign: 'center', fontSize: 14, color: C.textMut }}>{emptyText}</div>
+          : items.map(t => <TodoRow key={t.id} todo={t} selected={selected.has(t.id)} busy={busy} onSelect={onSelect} onOpenInvoice={onOpenInvoice} onOpenMaster={onOpenMaster} />)}
       </div>
     </div>
   )
 }
 
-export default function AuditTodos() {
+export default function AuditTodos({ onOpenMaster }) {
   const isMobile = useIsMobile()
   const [todos, setTodos]   = useState([])
   const [unconfirmed, setUnconfirmed] = useState([])
@@ -273,6 +309,7 @@ export default function AuditTodos() {
   const [selected, setSelected]     = useState(() => new Set())
   const [openInv, setOpenInv]       = useState(null)   // { id } for InvoiceDetailModal
   const [submitting, setSubmitting] = useState(false)
+  const [uploadOpen, setUploadOpen] = useState(false)   // "Upload cheques" from the cheque column
   const submittingRef = useRef(false)   // read by the focus listener (state would be a stale closure)
   const loadSeq = useRef(0)
 
@@ -389,11 +426,21 @@ export default function AuditTodos() {
   const tabBtn = (key, label, count) => {
     const on = view === key
     return (
-      <button type="button" onClick={() => changeView(key)} disabled={submitting} style={{
-        padding: '5px 11px', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-        border: `1px solid ${on ? C.primary : C.border}`, background: on ? C.primary : '#fff',
-        color: on ? '#fff' : C.textSm, fontFamily: 'inherit',
-      }}>{label} ({count})</button>
+      <button type="button" onClick={() => changeView(key)} disabled={submitting} aria-pressed={on}
+        className={`lc-seg lc-focus${on ? ' is-on' : ''}`} style={{
+        height: 28, padding: '0 10px 0 12px', borderRadius: 7, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+        border: 'none', background: on ? C.primary : 'transparent', whiteSpace: 'nowrap',
+        color: on ? '#fff' : C.textSm, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6,
+        boxShadow: on ? '0 1px 2px rgba(0,87,65,0.30), inset 0 1px 0 rgba(255,255,255,0.12)' : 'none',
+      }}>
+        {label}
+        <span style={{
+          minWidth: 20, height: 18, padding: '0 5px', boxSizing: 'border-box', borderRadius: 9999,
+          background: on ? 'rgba(255,255,255,0.22)' : '#e2e8f0', color: on ? '#fff' : C.textSm,
+          fontSize: 12, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        }}>{count}</span>
+      </button>
     )
   }
 
@@ -407,38 +454,51 @@ export default function AuditTodos() {
     if (id) setOpenInv({ id })
   }
 
-  const colProps = { selected, busy: submitting, onSelect: toggleSelect, onSelectAll: selectAll, onOpenInvoice: openInvoice }
+  const colProps = { selected, busy: submitting, onSelect: toggleSelect, onSelectAll: selectAll, onOpenInvoice: openInvoice, onOpenMaster }
 
   return (
     <div style={{
-      background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12,
-      boxShadow: '0 1px 3px rgba(0,0,0,0.07)', padding: isMobile ? 12 : 16, marginBottom: 16,
+      background: '#fff', border: `1px solid ${C.border}`, borderRadius: R.lg,
+      boxShadow: shadow, padding: isMobile ? 12 : '16px 18px 18px', marginBottom: 18,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-        <span style={{ fontSize: 13, fontWeight: 800, color: C.text, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Audit To-Do</span>
-        <span style={{ fontSize: 11.5, color: C.textMut }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px 10px', flexWrap: 'wrap', marginBottom: 14 }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: C.textB, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Audit To-Do</span>
+        <span style={{ fontSize: 13, color: C.textMut }}>
           {view === 'open' ? 'select the items you have checked, then press Submit' : 'select items to re-open, then press Submit'}
         </span>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+        <div style={{
+          marginLeft: 'auto', display: 'flex', gap: 2, padding: 3, borderRadius: 10,
+          background: '#f1f5f9', border: `1px solid ${C.borderLt}`,
+        }}>
           {tabBtn('open', 'To verify', openCount)}
           {tabBtn('done', 'Verified', doneCount)}
         </div>
       </div>
 
       {error && (
-        <div style={{ background: C.redLt, color: C.red, borderRadius: 8, padding: '8px 12px', fontSize: 12.5, marginBottom: 10 }}>{error}</div>
+        <div style={{ background: C.redLt, color: C.red, borderRadius: 8, padding: '8px 12px', fontSize: 14, marginBottom: 10 }}>{error}</div>
       )}
       {notice && !error && (
-        <div style={{ background: '#f0faf5', color: C.primary, border: '1px solid #b6e8d0', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, fontWeight: 600, marginBottom: 10 }}>✓ {notice}</div>
+        <div style={{ background: '#f0faf5', color: C.primary, border: '1px solid #b6e8d0', borderRadius: 8, padding: '8px 12px', fontSize: 14, fontWeight: 600, marginBottom: 10 }}>✓ {notice}</div>
       )}
 
       {loading ? (
-        <div style={{ padding: 16, textAlign: 'center', fontSize: 12.5, color: C.textMut }}>Loading…</div>
+        <div style={{ padding: 16, textAlign: 'center', fontSize: 14, color: C.textMut }}>Loading…</div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(340px, 1fr))', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(340px, 1fr))', gap: 14 }}>
           <TodoColumn icon={Landmark} title="Cheques → bank deposit" party="Ryder" items={cheques} {...colProps}
+            action={
+              <button type="button" onClick={() => setUploadOpen(true)} title="Upload cheques — invoices are matched and marked Paid automatically"
+                className="lc-btn lc-btn-subtle lc-focus" style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5, height: 26, padding: '0 9px', borderRadius: 7,
+                  border: 'none', background: C.primLt, color: C.primary, fontSize: 12.5, fontWeight: 600,
+                  cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                }}><Upload size={13} /> Upload</button>
+            }
+            hint="match each cheque against the bank deposit"
             emptyText={view === 'open' ? 'All cheques verified.' : 'No verified cheques yet.'} />
           <TodoColumn icon={Banknote} title="Advances → bank transfer" party="RZR" items={advances} {...colProps}
+            hint="match each advance against the bank transfer to RZR"
             emptyText={view === 'open' ? 'All advances verified.' : 'No verified advances yet.'} />
           <TodoColumn icon={MailWarning} title="Ryder — no confirmation" party="Ryder" items={unconf} {...colProps}
             hint={`resent ${UNCONF_MIN_ATTEMPTS}+ times or waiting ${UNCONF_MIN_DAYS}+ days — investigate`}
@@ -456,20 +516,20 @@ export default function AuditTodos() {
         }}>
           <span style={{
             minWidth: 24, height: 24, padding: '0 7px', borderRadius: 9999, background: C.primary,
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12.5, fontWeight: 800,
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800,
           }}>{n}</span>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>
+          <span style={{ fontSize: 14.5, fontWeight: 600 }}>
             selected {view === 'open' ? '— ready to mark as verified' : '— will be re-opened'}
           </span>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
             <button type="button" onClick={() => setSelected(new Set())} disabled={submitting} style={{
               flex: isMobile ? 1 : undefined, height: 34, padding: '0 14px', borderRadius: 8,
               border: '1px solid rgba(255,255,255,0.35)', background: 'transparent', color: '#fff',
-              fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+              fontSize: 14.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
             }}>Clear</button>
             <button type="button" onClick={submit} disabled={submitting} style={{
               flex: isMobile ? 2 : undefined, height: 34, padding: '0 18px', borderRadius: 8, border: 'none',
-              background: '#fff', color: C.primary, fontSize: 13, fontWeight: 800,
+              background: '#fff', color: C.primary, fontSize: 14.5, fontWeight: 800,
               cursor: submitting ? 'wait' : 'pointer', fontFamily: 'inherit', opacity: submitting ? 0.7 : 1,
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             }}>
@@ -478,6 +538,9 @@ export default function AuditTodos() {
             </button>
           </div>
         </div>
+      )}
+      {uploadOpen && (
+        <UploadDocumentModal kind="cheque" role="admin" onClose={() => setUploadOpen(false)} onDone={() => load()} />
       )}
       {openInv && <InvoiceDetailModal invoice={openInv} onClose={() => setOpenInv(null)} onRefresh={load} />}
     </div>

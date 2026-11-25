@@ -201,41 +201,61 @@ async function processCheque(admin: SupabaseClient, job: Job, actor: Actor): Pro
       console.warn('fallback cheque read failed:', err)
     }
   }
+  // Misread / shifted invoice NUMBERS: there is no approval step, so each line is matched to
+  // the invoice it pays by AMOUNT (see matchLinesToInvoices). Lines that can't be matched are
+  // reported and never mark anything Paid.
+  let corrections: string[] = []
+  const matchedLines = await matchLinesToInvoices(admin, fields)
+  fields = matchedLines.fields
+  const unmatchedLines = matchedLines.unmatched
+  if (matchedLines.corrections.length || unmatchedLines.length) {
+    corrections = [...matchedLines.corrections]
+    checks = [
+      ...validateCheque(fields),
+      ...(corrections.length ? [{ name: 'Misread invoice lines corrected', ok: true, detail: corrections.join(', ') }] : []),
+      ...(unmatchedLines.length ? [{ name: 'Every line matched to an invoice', ok: false, detail: `Not matched (not marked Paid): ${unmatchedLines.join(', ')}` }] : []),
+    ]
+  }
   // Still off? Ryder pays each invoice in full, and the portal knows every invoice amount.
   // If using the portal amounts for the lines that differ makes the lines add up to the
   // cheque total to the cent, the photo was misread — use the portal amounts (and say so).
-  let corrections: string[] = []
   if (!allOk(checks)) {
     const fixed = await reconcileWithPortal(admin, fields)
     if (fixed.corrections.length) {
       const fixedChecks = validateCheque(fixed.fields)
       if (allOk(fixedChecks)) {
         fields = fixed.fields
-        corrections = fixed.corrections
-        checks = [...fixedChecks, { name: 'Misread amounts corrected from portal', ok: true, detail: corrections.join(', ') }]
+        corrections = [...corrections, ...fixed.corrections]
+        checks = [...fixedChecks, { name: 'Misread amounts corrected from portal', ok: true, detail: fixed.corrections.join(', ') }]
       }
     }
   }
-  // Guard against misread invoice NUMBERS: a line's amount must match the portal amount of
-  // the invoice it names, otherwise we could mark the wrong invoice Paid.
   checks = [...checks, await portalAmountCheck(admin, fields)]
 
   const base = { file_sha256: sha, extracted: { ...fields, model, corrections }, checks, processed_at: new Date().toISOString() }
 
-  if (!allOk(checks)) {
-    // A cheque number we already have is a duplicate, whatever else was misread.
+  // No approval step: every readable cheque is applied straight away (like the old n8n flow).
+  // Only a cheque with nothing usable — no amount, or neither a number nor any invoice
+  // lines — waits in Upload Review, because there is nothing to match it to.
+  const unreadable = fields.amount === null || (!chequeKey(fields.check_number) && fields.lines.length === 0)
+  if (unreadable) {
     const dup = await findChequeByNumber(admin, fields.check_number)
     if (dup) {
       return await updateJob(admin, job.id, {
         ...base, status: 'duplicate', cheque_id: dup, status_reason: `Cheque ${fields.check_number} is already recorded`,
       })
     }
-    return await updateJob(admin, job.id, { ...base, status: 'needs_review', status_reason: failedSummary(checks) })
+    return await updateJob(admin, job.id, {
+      ...base, status: 'needs_review',
+      status_reason: `Could not read this cheque — ${failedSummary(checks) || 'no amount or invoice lines found'}. Enter the details or upload a clearer photo.`,
+    })
   }
 
+  // Anything that didn't check out is applied anyway and reported (alert + notification).
+  const warnings = checks.filter((c) => !c.ok).map((c) => `${c.name}: ${c.detail}`)
   const result = await ingestCheque(admin, {
     fields, storagePath: job.storage_path, fileSha256: sha,
-    source: 'process-document', actorId: actor.id, actorEmail: actor.email,
+    source: 'process-document', actorId: actor.id, actorEmail: actor.email, warnings,
   })
   if (result.outcome === 'duplicate') {
     return await updateJob(admin, job.id, {
@@ -246,11 +266,129 @@ async function processCheque(admin: SupabaseClient, job: Job, actor: Actor): Pro
   const notes = [
     result.missing.length ? `not in portal: ${result.missing.join(', ')}` : '',
     result.shortPaid.length ? `short-paid: ${result.shortPaid.join(', ')}` : '',
-  ].filter(Boolean).join(' · ')
+    corrections.length ? `corrected: ${corrections.join(', ')}` : '',
+    ...warnings,
+  ].filter(Boolean)
+  const summary = `${result.matched.length} invoice(s) marked Paid${result.matched.length ? ` (${result.matched.join(', ')})` : ''}`
+  await admin.from('notifications').insert({
+    client_id: null,
+    audience: 'admin',
+    title: `Cheque ${fields.check_number ?? '(no #)'} ${fmtUsd(fields.amount)} → ${summary.split(' (')[0]}`,
+    body: `${summary}.${notes.length ? ` Check: ${notes.join(' · ')}` : ''}`.slice(0, 1000),
+  })
   return await updateJob(admin, job.id, {
     ...base, status: 'added', cheque_id: result.chequeId,
-    status_reason: `Matched ${result.matched.length} invoice(s)${notes ? ` — ${notes}` : ''}`,
+    status_reason: `${summary}${notes.length ? ` — ${notes.join(' · ')}` : ''}`.slice(0, 1000),
   })
+}
+
+const fmtUsd = (n: number | null) => (n === null ? '' : `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
+
+/** Digits that differ between two invoice numbers (Levenshtein; misreads are swaps/drops of 1–2 digits). */
+function digitDistance(a: string, b: string): number {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)])
+  for (let j = 1; j <= b.length; j++) d[0][j] = j
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+    }
+  }
+  return d[a.length][b.length]
+}
+
+/** True when two amounts differ in exactly one printed digit (e.g. 873.22 vs 871.22). */
+function oneDigitOff(a: number, b: number): boolean {
+  const x = a.toFixed(2), y = b.toFixed(2)
+  if (x.length !== y.length || x === y) return false
+  let diff = 0
+  for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) diff++
+  return diff === 1
+}
+
+type LineMatch = { invoice: string | null; how: 'as_read' | 'renumbered' | 'amount_digit' | 'short_paid' | 'unmatched' }
+
+/**
+ * Matches each remittance line to the invoice it pays — by AMOUNT, across the whole cheque at
+ * once — so a blurry photo can't mark the wrong invoice Paid (there is no approval step).
+ * Candidates are the invoices named on the cheque plus open invoices with exactly a line's
+ * amount and a near-identical number. Each invoice is used once. In order:
+ *   1. the invoice the line names, when its amount fits;
+ *   2. the one remaining candidate with exactly the line's amount (misread / shifted number);
+ *   3. the one remaining candidate whose amount is one printed digit off (misread amount);
+ *   4. the named invoice, if still free and the line pays less (a genuine short payment);
+ *   otherwise the line is left unmatched — reported, never marked Paid.
+ */
+async function matchLinesToInvoices(
+  admin: SupabaseClient, f: ChequeFields,
+): Promise<{ fields: ChequeFields; corrections: string[]; unmatched: string[] }> {
+  if (!f.lines.length) return { fields: f, corrections: [], unmatched: [] }
+  const paidOf = (l: ChequeFields['lines'][number]) => round2((l.amount_paid ?? 0) + (l.deduction ?? 0))
+  const named = [...new Set(f.lines.map((l) => l.invoice_number).filter(Boolean))]
+  const amounts = [...new Set(f.lines.map(paidOf).filter((a) => a > 0))]
+  const [{ data: namedRows }, { data: sameAmount }] = await Promise.all([
+    named.length
+      ? admin.from('invoices').select('invoice_number, invoice_amount').in('invoice_number', named)
+      : Promise.resolve({ data: [] as { invoice_number: string; invoice_amount: number }[] }),
+    amounts.length
+      ? admin.from('invoices').select('invoice_number, invoice_amount').in('invoice_amount', amounts)
+        .not('status', 'in', '(Paid,Void,Cancelled)').limit(500)
+      : Promise.resolve({ data: [] as { invoice_number: string; invoice_amount: number }[] }),
+  ])
+  const pool = new Map<string, number>((namedRows ?? []).map((i) => [i.invoice_number, Number(i.invoice_amount)]))
+  for (const i of sameAmount ?? []) {
+    if (named.some((n) => digitDistance(n, i.invoice_number) <= 2)) pool.set(i.invoice_number, Number(i.invoice_amount))
+  }
+
+  const claimed = new Set<string>()
+  const result: LineMatch[] = f.lines.map(() => ({ invoice: null, how: 'unmatched' }))
+  const free = (n: string) => pool.has(n) && !claimed.has(n)
+  const assign = (i: number, n: string, how: LineMatch['how']) => { result[i] = { invoice: n, how }; claimed.add(n) }
+
+  // 1. As read.
+  f.lines.forEach((l, i) => {
+    if (free(l.invoice_number) && Math.abs(pool.get(l.invoice_number)! - paidOf(l)) <= 0.01) assign(i, l.invoice_number, 'as_read')
+  })
+  // 2 + 3. By amount (exact, then one digit off), repeating while claims free things up.
+  for (const how of ['renumbered', 'amount_digit'] as const) {
+    let progress = true
+    while (progress) {
+      progress = false
+      f.lines.forEach((l, i) => {
+        if (result[i].invoice) return
+        const amt = paidOf(l)
+        let cands = [...pool.keys()].filter((n) => free(n) &&
+          (how === 'renumbered' ? Math.abs(pool.get(n)! - amt) <= 0.01 : oneDigitOff(pool.get(n)!, amt)))
+        if (cands.length > 1) {   // several fit: take the number closest to what was read, if unique
+          const best = Math.min(...cands.map((n) => digitDistance(n, l.invoice_number)))
+          cands = cands.filter((n) => digitDistance(n, l.invoice_number) === best)
+        }
+        if (cands.length === 1) { assign(i, cands[0], how); progress = true }
+      })
+    }
+  }
+  // 4. Genuine short payment on the invoice the line names.
+  f.lines.forEach((l, i) => {
+    if (!result[i].invoice && free(l.invoice_number) && paidOf(l) > 0 && paidOf(l) < pool.get(l.invoice_number)!) {
+      assign(i, l.invoice_number, 'short_paid')
+    }
+  })
+
+  const corrections: string[] = []
+  const unmatched: string[] = []
+  const lines = f.lines.map((l, i) => {
+    const m = result[i]
+    if (!m.invoice) {
+      unmatched.push(`$${paidOf(l).toFixed(2)} (read as ${l.invoice_number || 'no #'})`)
+      return { ...l, invoice_number: '', read_as: l.invoice_number }
+    }
+    if (m.how === 'renumbered') corrections.push(`${l.invoice_number} → ${m.invoice} ($${paidOf(l).toFixed(2)})`)
+    if (m.how === 'amount_digit') {
+      corrections.push(`${m.invoice}: read $${paidOf(l).toFixed(2)} → $${pool.get(m.invoice)!.toFixed(2)}`)
+      return { ...l, invoice_number: m.invoice, amount_paid: round2(pool.get(m.invoice)! - (l.deduction ?? 0)), read_as: l.invoice_number }
+    }
+    return m.invoice === l.invoice_number ? l : { ...l, invoice_number: m.invoice, read_as: l.invoice_number }
+  })
+  return { fields: { ...f, lines }, corrections, unmatched }
 }
 
 // ── AI reading with a second opinion ─────────────────────────

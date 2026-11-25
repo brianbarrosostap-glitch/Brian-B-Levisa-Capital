@@ -22,6 +22,23 @@ export const C = {
   link:     '#1e40af',
   linkBg:   '#eff6ff',
   panel:    '#f8fafc',
+  // Softer hairline + readable small-label grey (same family as border/textSm)
+  borderLt: '#e9eef3',
+  textLbl:  '#6b7f8c',
+};
+
+// Monospace for invoice / cheque / PO identifiers (Cascadia on Windows 11,
+// SF Mono on macOS) — crisper than the generic `monospace` fallback.
+export const FONT_MONO = "ui-monospace, 'SF Mono', 'Cascadia Mono', 'Segoe UI Mono', Consolas, monospace";
+
+// Corner radii — keep cards / controls / pills consistent.
+export const R = { sm: 6, md: 8, lg: 12 };
+
+// Party tags on dashboard tiles + audit columns: RZR (customer), Ryder (debtor), Lavisa (us).
+export const PARTY_STYLE = {
+  RZR:    { bg: '#eff6ff', text: '#1e40af' },
+  Ryder:  { bg: '#f5f3ff', text: '#6d28d9' },
+  Lavisa: { bg: '#ecfdf5', text: '#047857' },
 };
 
 // Tones for small status pills (upload jobs, emails, job runs). Built from C.
@@ -33,8 +50,9 @@ export const TONE = {
   muted:   { bg: C.bg,      text: C.textSm },
 };
 
-export const shadow  = '0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04)';
-export const shadowMd = '0 4px 16px rgba(0,0,0,0.09)';
+export const shadow  = '0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.05)';
+export const shadowMd = '0 4px 16px rgba(16,24,40,0.09)';
+export const shadowHover = '0 2px 4px rgba(16,24,40,0.05), 0 8px 20px rgba(16,24,40,0.07)';
 
 export const STATUS_COLOURS = {
   'Uploaded':            { bg: '#f1f5f9', text: '#475569' },

@@ -98,7 +98,7 @@ export default function MyUploads() {
         return (
           <div>
             <StatusPill label={s.label} tone={s.tone} />
-            {s.note && <div style={{ fontSize: 11.5, color: C.textMut, marginTop: 3, maxWidth: 260 }}>{s.note}</div>}
+            {s.note && <div style={{ fontSize: 12.5, color: C.textMut, marginTop: 3, maxWidth: 260 }}>{s.note}</div>}
           </div>
         )
       },
@@ -122,17 +122,17 @@ export default function MyUploads() {
         </div>
 
         {hasActive && (
-          <div style={{ padding: '8px 14px', borderBottom: `1px solid ${C.border}`, background: C.infoLt, color: C.info, fontSize: 12 }}>
+          <div style={{ padding: '8px 14px', borderBottom: `1px solid ${C.border}`, background: C.infoLt, color: C.info, fontSize: 13 }}>
             Some files are still being read — this list refreshes automatically.
           </div>
         )}
 
         {loading ? (
-          <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>Loading uploads…</div>
+          <div style={{ padding: 32, textAlign: 'center', fontSize: 14.5, color: C.textMut }}>Loading uploads…</div>
         ) : error ? (
-          <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.red }}>{error}</div>
+          <div style={{ padding: 32, textAlign: 'center', fontSize: 14.5, color: C.red }}>{error}</div>
         ) : !clientId ? (
-          <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>
+          <div style={{ padding: 32, textAlign: 'center', fontSize: 14.5, color: C.textMut }}>
             Your account is not linked to a company yet. Please contact Levisa Capital.
           </div>
         ) : (

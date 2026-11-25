@@ -52,11 +52,11 @@ export default function Login() {
           <Layers size={24} color="#fff" />
         </div>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 22, fontWeight: 800, color: C.textB, letterSpacing: '-0.02em' }}>
+          <div style={{ fontSize: 24, fontWeight: 800, color: C.textB, letterSpacing: '-0.02em' }}>
             Levisa Capital
           </div>
           <div style={{
-            fontSize: 11, color: C.textMut, textTransform: 'uppercase',
+            fontSize: 12, color: C.textMut, textTransform: 'uppercase',
             letterSpacing: '0.06em', marginTop: 3,
           }}>
             Invoice Factoring Portal
@@ -69,10 +69,10 @@ export default function Login() {
         background: '#fff', borderRadius: 14, border: `1px solid ${C.border}`,
         boxShadow: '0 4px 24px rgba(0,0,0,0.07)', padding: 36, width: 400, maxWidth: '100%',
       }}>
-        <div style={{ fontSize: 18, fontWeight: 700, color: C.textB, marginBottom: 4 }}>
+        <div style={{ fontSize: 20, fontWeight: 700, color: C.textB, marginBottom: 4 }}>
           Welcome back
         </div>
-        <div style={{ fontSize: 13, color: C.textSm, marginBottom: 24, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 14.5, color: C.textSm, marginBottom: 24, lineHeight: 1.5 }}>
           Sign in with your email and password. You'll be taken to your portal automatically.
         </div>
 
@@ -81,7 +81,7 @@ export default function Login() {
             display: 'flex', alignItems: 'center', gap: 8,
             background: '#fff8f8', border: '1px solid #fecaca',
             borderRadius: 8, padding: '10px 13px', marginBottom: 18,
-            fontSize: 13, color: '#991b1b',
+            fontSize: 14.5, color: '#991b1b',
           }}>
             <AlertCircle size={15} color="#dc2626" style={{ flexShrink: 0 }} />
             {error}
@@ -92,7 +92,7 @@ export default function Login() {
           {/* Email */}
           <div>
             <label style={{
-              display: 'block', fontSize: 11.5, fontWeight: 600, color: C.textSm,
+              display: 'block', fontSize: 12.5, fontWeight: 600, color: C.textSm,
               marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em',
             }}>
               Email Address
@@ -104,7 +104,7 @@ export default function Login() {
               style={{
                 width: '100%', padding: '9px 13px', borderRadius: 8,
                 border: `1px solid ${error ? '#fca5a5' : C.borderMd}`,
-                fontSize: 13, color: C.text, outline: 'none', boxSizing: 'border-box',
+                fontSize: 14.5, color: C.text, outline: 'none', boxSizing: 'border-box',
                 fontFamily: 'inherit',
                 transition: 'border-color 0.15s',
               }}
@@ -116,7 +116,7 @@ export default function Login() {
           {/* Password */}
           <div>
             <label style={{
-              display: 'block', fontSize: 11.5, fontWeight: 600, color: C.textSm,
+              display: 'block', fontSize: 12.5, fontWeight: 600, color: C.textSm,
               marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em',
             }}>
               Password
@@ -130,7 +130,7 @@ export default function Login() {
                 style={{
                   width: '100%', padding: '9px 40px 9px 13px', borderRadius: 8,
                   border: `1px solid ${error ? '#fca5a5' : C.borderMd}`,
-                  fontSize: 13, color: C.text, outline: 'none', boxSizing: 'border-box',
+                  fontSize: 14.5, color: C.text, outline: 'none', boxSizing: 'border-box',
                   fontFamily: 'inherit',
                   transition: 'border-color 0.15s',
                 }}
@@ -158,7 +158,7 @@ export default function Login() {
               width: '100%', padding: '10px 0',
               borderRadius: 8, border: 'none',
               background: loading || !email || !password ? '#9ecfbd' : C.primary,
-              color: '#fff', fontWeight: 700, fontSize: 14,
+              color: '#fff', fontWeight: 700, fontSize: 15.5,
               cursor: loading || !email || !password ? 'not-allowed' : 'pointer',
               fontFamily: 'inherit', letterSpacing: '-0.01em',
               transition: 'background 0.15s',
@@ -168,7 +168,7 @@ export default function Login() {
           </button>
         </form>
 
-        <div style={{ fontSize: 12, color: C.textMut, textAlign: 'center', marginTop: 18 }}>
+        <div style={{ fontSize: 13, color: C.textMut, textAlign: 'center', marginTop: 18 }}>
           Need access? Contact{' '}
           <a href="mailto:brian@levisacapital.com" style={{ color: C.primary, textDecoration: 'none', fontWeight: 600 }}>
             brian@levisacapital.com

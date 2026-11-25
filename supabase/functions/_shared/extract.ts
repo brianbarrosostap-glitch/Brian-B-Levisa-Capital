@@ -33,6 +33,8 @@ export interface ChequeLine {
   invoice_amount?: number | null
   deduction?: number | null
   amount_paid?: number | null
+  /** What the photo said when the line was re-matched to a different invoice (or left unmatched). */
+  read_as?: string | null
 }
 
 export interface ChequeFields {

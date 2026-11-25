@@ -22,7 +22,7 @@ const CheckBadge = ({ status }) => {
   return (
     <span style={{
       display: 'inline-block', background: s.bg, color: s.text,
-      borderRadius: 9999, fontSize: 11, fontWeight: 600, padding: '2px 9px',
+      borderRadius: 9999, fontSize: 12, fontWeight: 600, padding: '2px 9px',
     }}>{s.label}</span>
   )
 }
@@ -74,26 +74,26 @@ export default function Checks() {
         <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <SearchBar placeholder="Search cheque #, conf #, invoice #…" value={search} onChange={setSearch} />
           <div style={{ marginLeft: 'auto' }}>
-            <Btn onClick={() => setUploadOpen(true)}><Upload size={13} /> Upload cheque</Btn>
+            <Btn onClick={() => setUploadOpen(true)}><Upload size={13} /> Upload cheques</Btn>
           </div>
         </div>
 
         {loading ? (
-          <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>Loading cheques…</div>
+          <div style={{ padding: 32, textAlign: 'center', fontSize: 14.5, color: C.textMut }}>Loading cheques…</div>
         ) : list.length === 0 ? (
-          <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>
+          <div style={{ padding: 32, textAlign: 'center', fontSize: 14.5, color: C.textMut }}>
             No cheques yet. Use “Upload cheque” to add one.
           </div>
         ) : isMobile ? (
           /* ── Mobile: stacked cards ── */
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 10 }}>
             {list.length === 0 && (
-              <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: C.textMut }}>No records.</div>
+              <div style={{ padding: 24, textAlign: 'center', fontSize: 14.5, color: C.textMut }}>No records.</div>
             )}
             {list.map(c => (
               <div key={c.id} style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: '12px 14px', background: '#fff' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14 }}>{c.check_number || '—'}</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 15.5 }}>{c.check_number || '—'}</span>
                   <CheckBadge status={c.status} />
                 </div>
                 {[
@@ -102,7 +102,7 @@ export default function Checks() {
                   ['Ryder Conf #', c.ryder_conf_number || '—'],
                   ['Amount', fmt(c.amount)],
                 ].map(([k, v]) => (
-                  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 12.5 }}>
+                  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 14 }}>
                     <span style={{ color: C.textMut, fontWeight: 600 }}>{k}</span>
                     <span style={{ fontVariantNumeric: 'tabular-nums', color: C.text }}>{v}</span>
                   </div>

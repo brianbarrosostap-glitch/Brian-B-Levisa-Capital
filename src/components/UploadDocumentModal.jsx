@@ -20,10 +20,10 @@ const SHEET_RE = /^https:\/\/(docs|drive)\.google\.com\/\S+$/i
 
 const inputStyle = {
   width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8,
-  border: `1.5px solid ${C.borderMd}`, fontSize: 13, color: C.text, outline: 'none',
+  border: `1.5px solid ${C.borderMd}`, fontSize: 14.5, color: C.text, outline: 'none',
   background: C.card, fontFamily: 'inherit',
 }
-const labelStyle = { display: 'block', fontSize: 12, fontWeight: 700, color: C.textSm, marginBottom: 6 }
+const labelStyle = { display: 'block', fontSize: 13, fontWeight: 700, color: C.textSm, marginBottom: 6 }
 
 let seq = 0
 const nextKey = () => `u${++seq}`
@@ -126,7 +126,7 @@ export default function UploadDocumentModal({ kind = 'invoice', clientId, client
     <Modal onClose={handleClose} width={600}
       title={kind === 'cheque' ? 'Upload cheques' : 'Upload invoices'}
       subtitle={kind === 'cheque'
-        ? 'Photos or PDFs of Ryder cheques / remittances — each one is read automatically'
+        ? 'Photos or PDFs of Ryder cheques — each is read automatically, matched to its invoices, and those invoices are marked Paid (no approval needed)'
         : 'PDF, Excel or CSV files — each one is read automatically'}
       accentHeader>
       <ModalBody>
@@ -153,10 +153,10 @@ export default function UploadDocumentModal({ kind = 'invoice', clientId, client
                 background: dragOver ? C.primLt : C.panel, padding: '26px 16px', textAlign: 'center', cursor: 'pointer',
               }}>
               <Upload size={22} color={C.primary} />
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: C.text, marginTop: 8 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, color: C.text, marginTop: 8 }}>
                 Click to choose {noun} files, or drop them here
               </div>
-              <div style={{ fontSize: 11.5, color: C.textMut, marginTop: 4 }}>
+              <div style={{ fontSize: 12.5, color: C.textMut, marginTop: 4 }}>
                 {kind === 'cheque' ? 'Images (JPG, PNG, HEIC) or PDF' : 'PDF, XLSX, XLS or CSV'} · up to 25 MB each · multiple allowed
               </div>
               <input ref={inputRef} type="file" multiple accept={ACCEPT[kind]} style={{ display: 'none' }}
@@ -166,10 +166,10 @@ export default function UploadDocumentModal({ kind = 'invoice', clientId, client
             {files.length > 0 && (
               <div style={{ marginTop: 12, border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
                 {files.map((f, i) => (
-                  <div key={`${f.name}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderTop: i ? `1px solid ${C.border}` : 'none', fontSize: 12.5 }}>
+                  <div key={`${f.name}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderTop: i ? `1px solid ${C.border}` : 'none', fontSize: 14 }}>
                     <FileText size={14} color={C.textMut} />
                     <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.text }}>{f.name}</span>
-                    <span style={{ color: f.size > MAX_UPLOAD_BYTES ? C.red : C.textMut, fontSize: 11.5, whiteSpace: 'nowrap' }}>
+                    <span style={{ color: f.size > MAX_UPLOAD_BYTES ? C.red : C.textMut, fontSize: 12.5, whiteSpace: 'nowrap' }}>
                       {(f.size / 1024 / 1024).toFixed(1)} MB
                     </span>
                     <button type="button" onClick={() => removeFile(i)} title="Remove" style={{
@@ -190,13 +190,13 @@ export default function UploadDocumentModal({ kind = 'invoice', clientId, client
                     placeholder="https://docs.google.com/spreadsheets/d/…"
                     style={{ ...inputStyle, paddingLeft: 32 }} />
                 </div>
-                <div style={{ fontSize: 11.5, color: C.textMut, marginTop: 5 }}>
+                <div style={{ fontSize: 12.5, color: C.textMut, marginTop: 5 }}>
                   Make sure the link is shared so “anyone with the link” can view it.
                 </div>
               </div>
             )}
 
-            {formError && <div style={{ fontSize: 12.5, color: C.red, marginTop: 12 }}>{formError}</div>}
+            {formError && <div style={{ fontSize: 14, color: C.red, marginTop: 12 }}>{formError}</div>}
           </>
         )}
 
@@ -208,7 +208,7 @@ export default function UploadDocumentModal({ kind = 'invoice', clientId, client
           </div>
         )}
         {started && running && (
-          <div style={{ fontSize: 11.5, color: C.textMut, marginTop: 10 }}>
+          <div style={{ fontSize: 12.5, color: C.textMut, marginTop: 10 }}>
             Reading can take up to a minute per file. Please keep this window open.
           </div>
         )}
@@ -247,7 +247,9 @@ function ItemRow({ item, first, isAdmin, noun }) {
     icon = <XCircle size={15} color={C.red} />
     line1 = <span style={{ color: C.red, fontWeight: 600 }}>{item.error}</span>
   } else {
-    const s = isAdmin ? adminJobStatus(job?.status) : customerJobStatus(job)
+    const base = isAdmin ? adminJobStatus(job?.status) : customerJobStatus(job)
+    // A cheque that was saved has already marked its invoices Paid — say so.
+    const s = noun === 'cheque' && job?.status === 'added' ? { ...base, label: 'Applied' } : base
     icon = null
     line1 = <StatusPill label={s.label} tone={s.tone} small />
     const ex = job?.extracted || {}
@@ -269,13 +271,13 @@ function ItemRow({ item, first, isAdmin, noun }) {
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px', borderTop: first ? 'none' : `1px solid ${C.border}` }}>
       <div style={{ width: 16, paddingTop: 2, flexShrink: 0 }}>{icon}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {item.isLink ? 'Google Sheet link' : item.name}
         </div>
-        {item.isLink && <div style={{ fontSize: 11, color: C.textMut, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>}
-        <div style={{ fontSize: 12, marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {item.isLink && <div style={{ fontSize: 12, color: C.textMut, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>}
+        <div style={{ fontSize: 13, marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           {line1}
-          {line2 && <span style={{ fontSize: 11.5, color: C.textSm }}>{line2}</span>}
+          {line2 && <span style={{ fontSize: 12.5, color: C.textSm }}>{line2}</span>}
         </div>
       </div>
     </div>

@@ -113,8 +113,8 @@ export default function App() {
       fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
       background: '#f2f5f8', flexDirection: 'column', gap: 12,
     }}>
-      <div style={{ fontSize: 15, fontWeight: 700, color: C.red }}>Access error</div>
-      <div style={{ fontSize: 13, color: C.textSm }}>
+      <div style={{ fontSize: 16.5, fontWeight: 700, color: C.red }}>Access error</div>
+      <div style={{ fontSize: 14.5, color: C.textSm }}>
         Your account doesn't have a valid role assigned. Contact brian@levisacapital.com.
       </div>
       <button
@@ -134,8 +134,8 @@ function ErrorScreen({ message, onSignOut }) {
       fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
       background: '#f2f5f8', flexDirection: 'column', gap: 12, padding: 24, textAlign: 'center',
     }}>
-      <div style={{ fontSize: 15, fontWeight: 700, color: C.red }}>Couldn't load your account</div>
-      <div style={{ fontSize: 13, color: C.textSm, maxWidth: 420, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 16.5, fontWeight: 700, color: C.red }}>Couldn't load your account</div>
+      <div style={{ fontSize: 14.5, color: C.textSm, maxWidth: 420, lineHeight: 1.5 }}>
         {message}
       </div>
       <button
@@ -163,7 +163,7 @@ function LoadingScreen({ message = 'Loading…' }) {
       }}>
         <Layers size={24} color="#fff" />
       </div>
-      <div style={{ fontSize: 13, color: C.textMut }}>{message}</div>
+      <div style={{ fontSize: 14.5, color: C.textMut }}>{message}</div>
     </div>
   )
 }

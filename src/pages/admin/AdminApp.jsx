@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react'
 import { LayoutDashboard, ListOrdered, Receipt, ScrollText, FileSearch, Archive, Trash2, Bot } from 'lucide-react'
-import { C } from '../../tokens'
-import { Shell, Topbar, PageContent } from '../../components/ui'
+import { Shell, Topbar, PageContent, NavItem } from '../../components/ui'
 import NotificationBell from '../../components/NotificationBell'
 import InstallPWA from '../../components/InstallPWA'
 import { supabase } from '../../lib/supabase'
 import { REVIEW_JOB_STATUSES } from '../../lib/documentJobs'
 import Dashboard from './Dashboard'
 import Master from './Master'
+import { presetMasterFilters } from '../../lib/masterFilters'
 import Checks from './Checks'
 import AuditLogs from './AuditLogs'
 import UploadReview from './UploadReview'
@@ -67,31 +67,15 @@ export default function AdminApp({ user, onSignOut }) {
 
   const badges = { review: reviewCount }
 
+  // Dashboard tiles / to-dos → Master with filters pre-set.
+  const openMaster = (filters) => { presetMasterFilters(filters); setPage('master') }
+
   const NavItems = (
     <>
-      {NAV.map(n => {
-        const Icon = n.icon
-        const badge = badges[n.key]
-        return (
-          <button key={n.key} onClick={() => setPage(n.key)} style={{
-            display: 'flex', alignItems: 'center', gap: 9, width: '100%',
-            padding: '8px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
-            background: page === n.key ? 'rgba(0,121,83,0.28)' : 'transparent',
-            color: page === n.key ? '#fff' : 'rgba(255,255,255,0.58)',
-            fontWeight: page === n.key ? 600 : 400, fontSize: 13.5,
-            fontFamily: 'Inter, system-ui, -apple-system, sans-serif', textAlign: 'left',
-          }}>
-            <Icon size={16} />
-            <span style={{ flex: 1 }}>{n.label}</span>
-            {badge > 0 && (
-              <span style={{
-                background: C.red, color: C.card, borderRadius: 9999,
-                fontSize: 10, fontWeight: 700, padding: '1px 6px', minWidth: 18, textAlign: 'center',
-              }}>{badge}</span>
-            )}
-          </button>
-        )
-      })}
+      {NAV.map(n => (
+        <NavItem key={n.key} icon={n.icon} label={n.label} active={page === n.key}
+          badge={badges[n.key] > 0 ? badges[n.key] : null} onClick={() => setPage(n.key)} />
+      ))}
     </>
   )
 
@@ -109,7 +93,7 @@ export default function AdminApp({ user, onSignOut }) {
           <button style={{
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '6px 13px', borderRadius: 7, border: '1px solid #dde4ec',
-            background: '#fff', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+            background: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
             color: '#4a6070', fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
           }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -124,7 +108,7 @@ export default function AdminApp({ user, onSignOut }) {
         <NotificationBell />
       </Topbar>
       <PageContent>
-        {page === 'dashboard'  && <Dashboard />}
+        {page === 'dashboard'  && <Dashboard onOpenMaster={openMaster} />}
         {page === 'master'     && <Master />}
         {page === 'cheques'    && <Checks />}
         {page === 'review'     && <UploadReview onChanged={fetchReviewCount} />}

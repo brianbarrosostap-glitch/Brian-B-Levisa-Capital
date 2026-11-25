@@ -48,7 +48,7 @@ export default function InstallPWA() {
           display: 'inline-flex', alignItems: 'center', gap: 6,
           padding: '6px 12px', height: 34, borderRadius: 8,
           border: `1px solid ${C.primary}`, background: C.primary, color: '#fff',
-          fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+          fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
         }}
       >
         <Download size={15} /> Install app
@@ -63,14 +63,14 @@ export default function InstallPWA() {
             background: '#fff', borderRadius: 14, maxWidth: 340, padding: '20px 22px',
             boxShadow: '0 24px 70px rgba(0,0,0,0.34)',
           }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 8 }}>Install Levisa Capital</div>
-            <div style={{ fontSize: 13, color: C.textSm, lineHeight: 1.55 }}>
+            <div style={{ fontSize: 16.5, fontWeight: 700, color: C.text, marginBottom: 8 }}>Install Levisa Capital</div>
+            <div style={{ fontSize: 14.5, color: C.textSm, lineHeight: 1.55 }}>
               On iPhone/iPad: tap the <strong>Share</strong> button in Safari, then choose
               <strong> “Add to Home Screen.”</strong> The app will open fullscreen like a native app.
             </div>
             <button onClick={() => setShowIosHint(false)} style={{
               marginTop: 16, padding: '8px 14px', borderRadius: 8, border: 'none',
-              background: C.primary, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+              background: C.primary, color: '#fff', fontSize: 14.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
             }}>Got it</button>
           </div>
         </div>

@@ -48,23 +48,25 @@ export default function FileLink({ fileRef, label = 'View', emptyLabel, variant 
   const styles = {
     badge: {
       gap: 4, background: C.linkBg, border: `1px solid ${C.border}`, borderRadius: 6,
-      color: ok ? C.link : C.textMut, fontSize: 11, padding: '2px 7px',
+      color: ok ? C.link : C.textMut, fontSize: 12, padding: '2px 7px',
     },
     button: {
-      gap: 5, background: C.linkBg, border: `1px solid ${C.border}`, borderRadius: 6,
-      color: ok ? C.link : C.textMut, fontSize: 12, padding: '4px 10px', fontWeight: 600,
+      gap: 6, background: C.linkBg, border: `1px solid ${ok ? '#cfdcf7' : C.border}`, borderRadius: 7,
+      color: ok ? C.link : C.textMut, fontSize: 14, height: 30, boxSizing: 'border-box', padding: '0 11px', fontWeight: 600,
+      whiteSpace: 'nowrap',
     },
     text: {
       gap: 3, background: 'none', border: 'none', padding: 0,
-      color: ok ? C.primary : C.textMut, fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap',
+      color: ok ? C.primary : C.textMut, fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap',
     },
   }
-  const iconSize = variant === 'button' ? 11 : variant === 'text' ? 11 : 9
+  const iconSize = variant === 'button' ? 13 : variant === 'text' ? 11 : 9
 
   return (
     <a
       href="#"
       onClick={open}
+      className={ok && variant === 'button' ? 'lc-filebtn lc-focus' : 'lc-focus'}
       title={err || (ok ? undefined : 'No file uploaded')}
       style={{
         display: 'inline-flex', alignItems: 'center', textDecoration: 'none',

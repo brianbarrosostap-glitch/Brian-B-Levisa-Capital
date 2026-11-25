@@ -72,18 +72,22 @@ export default function NotificationBell({ role = 'admin' }) {
       <button
         onClick={() => setOpen(o => !o)}
         aria-label="Notifications"
+        className="lc-icon-btn lc-focus"
         style={{
-          position: 'relative', width: 34, height: 34, borderRadius: 8,
-          border: `1px solid ${C.border}`, background: '#fff', cursor: 'pointer',
+          position: 'relative', width: 36, height: 36, borderRadius: 9,
+          border: `1px solid ${open ? C.borderMd : C.border}`, background: open ? C.panel : '#fff', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 1px 2px rgba(16,24,40,0.04)',
         }}
       >
-        <Bell size={16} color={C.textSm} />
+        <Bell size={16} color={C.textSm} strokeWidth={1.9} />
         {unread > 0 && (
           <span style={{
-            position: 'absolute', top: -5, right: -5, minWidth: 16, height: 16,
+            position: 'absolute', top: -6, right: -6, minWidth: 18, height: 18,
             padding: '0 4px', borderRadius: 9999, background: C.red, color: '#fff',
-            fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            border: '2px solid #fff', boxSizing: 'border-box',
+            fontSize: 11, fontWeight: 700, lineHeight: 1, fontVariantNumeric: 'tabular-nums',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>{unread > 9 ? '9+' : unread}</span>
         )}
       </button>
@@ -95,16 +99,16 @@ export default function NotificationBell({ role = 'admin' }) {
           boxShadow: '0 8px 30px rgba(0,0,0,0.16)', zIndex: 50, overflow: 'hidden',
         }}>
           <div style={{ padding: '11px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Notifications</span>
+            <span style={{ fontSize: 14.5, fontWeight: 700, color: C.text }}>Notifications</span>
             {unread > 0 && (
-              <button onClick={markAllRead} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: 'none', background: 'transparent', color: C.primary, fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>
+              <button onClick={markAllRead} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: 'none', background: 'transparent', color: C.primary, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
                 <Check size={12} /> Mark all read
               </button>
             )}
           </div>
           <div style={{ maxHeight: 360, overflowY: 'auto' }}>
             {items.length === 0 ? (
-              <div style={{ padding: 24, textAlign: 'center', fontSize: 12.5, color: C.textMut }}>No notifications yet.</div>
+              <div style={{ padding: 24, textAlign: 'center', fontSize: 14, color: C.textMut }}>No notifications yet.</div>
             ) : (
               items.map(n => (
                 <div key={n.id} style={{
@@ -113,9 +117,9 @@ export default function NotificationBell({ role = 'admin' }) {
                 }}>
                   <div style={{ width: 7, height: 7, borderRadius: '50%', marginTop: 6, flexShrink: 0, background: n.read ? 'transparent' : C.primary }} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>{n.title}</div>
-                    <div style={{ fontSize: 11.5, color: C.textSm, marginTop: 1, lineHeight: 1.4 }}>{n.body}</div>
-                    <div style={{ fontSize: 10.5, color: C.textMut, marginTop: 3 }}>{timeAgo(n.created_at)}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{n.title}</div>
+                    <div style={{ fontSize: 12.5, color: C.textSm, marginTop: 1, lineHeight: 1.4 }}>{n.body}</div>
+                    <div style={{ fontSize: 11.5, color: C.textMut, marginTop: 3 }}>{timeAgo(n.created_at)}</div>
                   </div>
                 </div>
               ))

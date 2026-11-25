@@ -46,12 +46,12 @@ export default function AdvancedInvoices() {
     <div>
       <Card noPad>
         {loading ? (
-          <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>Loading…</div>
+          <div style={{ padding: 32, textAlign: 'center', fontSize: 14.5, color: C.textMut }}>Loading…</div>
         ) : isMobile ? (
           /* ── Mobile: stacked cards ── */
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 10 }}>
             {invoices.length === 0 && (
-              <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: C.textMut }}>No advanced invoices yet.</div>
+              <div style={{ padding: 24, textAlign: 'center', fontSize: 14.5, color: C.textMut }}>No advanced invoices yet.</div>
             )}
             {invoices.map(inv => {
               const approved = APPROVED.includes(inv.status)
@@ -59,7 +59,7 @@ export default function AdvancedInvoices() {
               return (
                 <div key={inv.id} style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: '12px 14px', background: '#fff' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14 }}>{inv.invoice_number}</span>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 15.5 }}>{inv.invoice_number}</span>
                     <CustomerBadge status={inv.status} />
                   </div>
                   {[
@@ -68,13 +68,13 @@ export default function AdvancedInvoices() {
                     ['Advance', approved ? fmt(inv.advance_amount) : '—'],
                     ['Submitted', inv.submitted_at ? new Date(inv.submitted_at).toLocaleDateString() : '—'],
                   ].map(([k, v]) => (
-                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 12.5 }}>
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 14 }}>
                       <span style={{ color: C.textMut, fontWeight: 600 }}>{k}</span>
                       <span style={{ fontVariantNumeric: 'tabular-nums', color: k === 'Advance' && approved ? C.primary : C.text, fontWeight: k === 'Advance' && approved ? 700 : 400 }}>{v}</span>
                     </div>
                   ))}
                   {pendingConf && (
-                    <div style={{ marginTop: 8, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 10px', fontSize: 12, color: '#92400e' }}>
+                    <div style={{ marginTop: 8, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 10px', fontSize: 13, color: '#92400e' }}>
                       <strong>Action needed:</strong> Check your email and confirm this invoice to proceed.
                     </div>
                   )}
@@ -115,7 +115,7 @@ export default function AdvancedInvoices() {
                       <TD accent style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                         {approved ? fmt(inv.advance_amount) : <span style={{ color: C.textMut, fontWeight: 400 }}>—</span>}
                       </TD>
-                      <TD muted style={{ fontSize: 12 }}>{inv.submitted_at ? new Date(inv.submitted_at).toLocaleDateString() : '—'}</TD>
+                      <TD muted style={{ fontSize: 13 }}>{inv.submitted_at ? new Date(inv.submitted_at).toLocaleDateString() : '—'}</TD>
                       <TD style={{ textAlign: 'center' }}><CustomerBadge status={inv.status} /></TD>
                       <TD style={{ textAlign: 'center' }}><FileLink fileRef={invoiceFileRef(inv)} /></TD>
                     </tr>
@@ -123,7 +123,7 @@ export default function AdvancedInvoices() {
                     {pendingConf && (
                       <tr style={{ borderBottom: `1px solid ${C.border}` }}>
                         <td colSpan={7} style={{ padding: '0 14px 12px' }}>
-                          <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, color: '#92400e', display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '9px 12px', fontSize: 14, color: '#92400e', display: 'flex', alignItems: 'center', gap: 8 }}>
                             <span style={{ fontWeight: 700 }}>Action needed:</span>
                             Please check your email inbox and confirm this invoice to proceed with your advance.
                           </div>
@@ -134,7 +134,7 @@ export default function AdvancedInvoices() {
                   )
                 })}
                 {invoices.length === 0 && (
-                  <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>No advanced invoices yet.</td></tr>
+                  <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', fontSize: 14.5, color: C.textMut }}>No advanced invoices yet.</td></tr>
                 )}
               </tbody>
             </table>

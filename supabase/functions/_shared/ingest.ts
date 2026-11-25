@@ -83,6 +83,8 @@ export interface IngestChequeInput {
   source: string
   actorId?: string | null
   actorEmail?: string | null
+  /** Checks that failed but were applied anyway (auto-apply, no approval) — reported in the alert. */
+  warnings?: string[]
 }
 
 export type IngestChequeResult =
@@ -158,17 +160,20 @@ export async function ingestCheque(admin: SupabaseClient, input: IngestChequeInp
     }
   }
 
-  if (!matched.length || missing.length || shortPaid.length) {
+  const warnings = input.warnings ?? []
+  if (!matched.length || missing.length || shortPaid.length || warnings.length) {
     const parts = [
       !matched.length ? `none of its invoices (${numbers.join(', ') || 'none read'}) are in the portal` : '',
       matched.length && missing.length ? `not found in portal: ${missing.join(', ')}` : '',
       shortPaid.length ? `paid less than the invoice amount: ${shortPaid.join(', ')}` : '',
+      ...warnings,
     ].filter(Boolean)
     await admin.from('needs_attention').insert({
       cheque_id: cheque.id,
       invoice_id: primary?.id ?? null,
       type: 'check_unmatched',
-      title: !matched.length ? 'Cheque Unmatched' : shortPaid.length ? 'Cheque short-paid' : 'Cheque partly unmatched',
+      title: !matched.length ? 'Cheque Unmatched' : shortPaid.length ? 'Cheque short-paid'
+        : missing.length ? 'Cheque partly unmatched' : 'Cheque applied — please check',
       detail: `Cheque ${f.check_number ?? '(no #)'} $${(f.amount ?? 0).toFixed(2)} — ${parts.join('; ')}.`,
       action_label: 'Review',
       check_number: f.check_number,

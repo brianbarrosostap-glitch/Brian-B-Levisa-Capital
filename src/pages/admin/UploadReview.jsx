@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { Check, X, RotateCcw, Plus, Trash2, FileText, Receipt, Info } from 'lucide-react'
-import { C, TONE } from '../../tokens'
-import { Card, Btn, Tabs, SearchBar, FilterChip, DataList, Modal, ModalBody } from '../../components/ui'
+import { Check, X, RotateCcw, Plus, Trash2, FileText, Receipt, AlertTriangle } from 'lucide-react'
+import { C, TONE, FONT_MONO, shadow } from '../../tokens'
+import { Card, Btn, Tabs, SearchBar, FilterChip, DataList, Modal, ModalBody, useViewportWidth } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
 import { usePersistentState } from '../../hooks/usePersistentState'
 import FileLink from '../../components/FileLink'
@@ -17,12 +17,14 @@ const KIND_LABEL = { invoice: 'Invoice', cheque: 'Cheque' }
 const STATUS_OPTIONS = Object.values(ADMIN_JOB_STATUS).map(s => s.label)
 const labelToStatus = Object.fromEntries(Object.entries(ADMIN_JOB_STATUS).map(([k, v]) => [v.label, k]))
 
+// Inputs get className="lc-select" for the hover / green focus ring (index.css).
 const inputStyle = {
-  width: '100%', boxSizing: 'border-box', padding: '7px 10px', borderRadius: 7,
-  border: `1.5px solid ${C.borderMd}`, fontSize: 13, color: C.text, outline: 'none',
-  background: C.card, fontFamily: 'inherit',
+  width: '100%', boxSizing: 'border-box', height: 38, padding: '0 11px', borderRadius: 8,
+  border: `1px solid ${C.borderMd}`, fontSize: 14.5, color: C.text,
+  background: C.card, fontFamily: 'inherit', boxShadow: '0 1px 2px rgba(16,24,40,0.04)',
 }
-const sectionLabel = { fontSize: 11, fontWeight: 700, color: C.textSm, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }
+const sectionLabel = { fontSize: 12, fontWeight: 700, color: C.textSm, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }
+const countPill = { height: 20, padding: '0 8px', borderRadius: 9999, fontSize: 11.5, fontWeight: 700, letterSpacing: 0, textTransform: 'none', display: 'inline-flex', alignItems: 'center' }
 
 // "1,234.50" / "$1234.5" → 1234.5 ; '' → null ; junk → NaN
 const parseAmount = (v) => {
@@ -96,21 +98,24 @@ function buildFields(kind, f) {
 
 const FieldInput = ({ label, value, onChange, type = 'text', mono, disabled, placeholder }) => (
   <label style={{ display: 'block' }}>
-    <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: C.textSm, marginBottom: 4 }}>{label}</span>
-    <input type={type} value={value} disabled={disabled} placeholder={placeholder}
+    <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.textSm, marginBottom: 6 }}>{label}</span>
+    <input type={type} value={value} disabled={disabled} placeholder={placeholder} className="lc-select"
       inputMode={label.toLowerCase().includes('amount') ? 'decimal' : undefined}
       onChange={e => onChange(e.target.value)}
-      style={{ ...inputStyle, fontFamily: mono ? 'monospace' : 'inherit', background: disabled ? C.panel : C.card }} />
+      style={{ ...inputStyle, fontFamily: mono ? FONT_MONO : 'inherit', fontSize: mono ? 14 : 14.5, background: disabled ? C.panel : C.card }} />
   </label>
 )
 
-/* ── One upload: details, checks, editable fields, actions ── */
-function ReviewPanel({ job, names, onDone }) {
+/* ── One upload: details, checks, editable fields, actions ──
+   `framed` = rendered as a stand-alone review card (header band + action
+   footer band). Inside the All-uploads modal it's rendered plain. */
+function ReviewPanel({ job, names, onDone, framed }) {
   const [form, setForm]     = useState(() => initForm(job))
   const [busy, setBusy]     = useState('')       // '' | 'approve' | 'retry' | 'reject'
   const [error, setError]   = useState('')
   const [rejecting, setRejecting] = useState(false)
   const [note, setNote]     = useState('')
+  const narrow = useViewportWidth() < 640
 
   useEffect(() => { setForm(initForm(job)); setError(''); setRejecting(false); setNote('') }, [job.id, job.updated_at])
 
@@ -145,153 +150,217 @@ function ReviewPanel({ job, names, onDone }) {
 
   const s = adminJobStatus(job.status)
   const checks = Array.isArray(job.checks) ? job.checks : []
+  const passed = checks.filter(c => c.ok).length
+  const failed = checks.length - passed
   const linesTotal = isCheque ? form.lines.reduce((t, l) => t + (Number(parseAmount(l.amount_paid)) || 0), 0) : 0
   const chequeAmt = isCheque ? parseAmount(form.amount) : null
   const linesMismatch = isCheque && form.lines.length > 0 && chequeAmt != null && !isNaN(chequeAmt) && Math.abs(linesTotal - chequeAmt) >= 0.01
 
+  const meta = [
+    KIND_LABEL[job.kind] || job.kind,
+    job.client?.name,
+    `uploaded by ${names[job.created_by] || 'system'}`,
+    fmtDateTime(job.created_at),
+    job.source && job.source !== 'upload' ? `via ${job.source.replace('_', ' ')}` : null,
+  ].filter(Boolean)
+
+  const th = (align) => ({
+    height: 38, padding: '0 12px', fontSize: 12.5, fontWeight: 600, color: C.textLbl, textAlign: align,
+    background: C.panel, borderBottom: `1px solid ${C.border}`, whiteSpace: 'nowrap',
+  })
+  const amountCell = { padding: '6px 12px', fontSize: 14.5, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }
+  const dash = <span style={{ color: C.borderMd }}>—</span>
+
   return (
     <div>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-        <div style={{ width: 32, height: 32, borderRadius: 8, background: C.primLt, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          {isCheque ? <Receipt size={16} color={C.primary} /> : <FileText size={16} color={C.primary} />}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        ...(framed
+          ? { padding: '14px 20px', background: C.panel, borderBottom: `1px solid ${C.borderLt}` }
+          : { marginBottom: 16 }),
+      }}>
+        <div style={{
+          width: 38, height: 38, borderRadius: 10, background: C.primLt, flexShrink: 0,
+          boxShadow: 'inset 0 0 0 1px rgba(0,121,83,0.12)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {isCheque ? <Receipt size={18} color={C.primary} /> : <FileText size={18} color={C.primary} />}
         </div>
         <div style={{ flex: 1, minWidth: 200 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 700, fontSize: 13.5, color: C.text, wordBreak: 'break-all' }}>{jobFileName(job)}</span>
-            <FileLink fileRef={jobFileRef(job)} label={job.storage_path ? 'View file' : 'Open link'} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 700, fontSize: 16, color: C.textB, letterSpacing: '-0.01em', overflowWrap: 'anywhere' }}>{jobFileName(job)}</span>
+            <FileLink variant="button" fileRef={jobFileRef(job)} label={job.storage_path ? 'View file' : 'Open link'} />
           </div>
-          <div style={{ fontSize: 12, color: C.textSm, marginTop: 3 }}>
-            {KIND_LABEL[job.kind] || job.kind}
-            {job.client?.name ? ` · ${job.client.name}` : ''}
-            {' · '}uploaded by {names[job.created_by] || 'system'} · {fmtDateTime(job.created_at)}
-            {job.source && job.source !== 'upload' ? ` · via ${job.source.replace('_', ' ')}` : ''}
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '2px 7px', fontSize: 13, color: C.textSm, marginTop: 4 }}>
+            {meta.map((m, i) => (
+              <React.Fragment key={i}>
+                {i > 0 && <span aria-hidden style={{ color: C.borderMd, fontSize: 11 }}>•</span>}
+                <span style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{m}</span>
+              </React.Fragment>
+            ))}
           </div>
         </div>
         <StatusPill label={s.label} tone={s.tone} />
       </div>
 
-      {job.status_reason && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: C.amberLt, borderRadius: 8, padding: '9px 12px', fontSize: 12.5, color: C.amber, marginBottom: 12 }}>
-          <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-          <span>{job.status_reason}</span>
-        </div>
-      )}
-
-      {checks.length > 0 && (
-        <div style={{ marginBottom: 14 }}>
-          <div style={sectionLabel}>Checks</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {checks.map((c, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 7, fontSize: 12.5 }}>
-                {c.ok
-                  ? <Check size={14} color={C.primary} strokeWidth={3} style={{ flexShrink: 0, marginTop: 1 }} />
-                  : <X size={14} color={C.red} strokeWidth={3} style={{ flexShrink: 0, marginTop: 1 }} />}
-                <span style={{ fontWeight: 600, color: c.ok ? C.text : C.red }}>{c.name}</span>
-                {c.detail && <span style={{ color: C.textSm }}>— {c.detail}</span>}
-              </div>
-            ))}
+      <div style={framed ? { padding: '16px 20px 18px' } : undefined}>
+        {job.status_reason && (
+          <div style={{
+            display: 'flex', gap: 10, alignItems: 'flex-start', background: C.amberLt, border: '1px solid #fde68a',
+            borderRadius: 10, padding: '10px 14px', fontSize: 14, lineHeight: 1.5, color: C.amber, marginBottom: 18,
+          }}>
+            <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+            <span style={{ overflowWrap: 'anywhere' }}>{job.status_reason}</span>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Editable fields */}
-      <div style={sectionLabel}>{editable ? 'Fields (edit before approving)' : 'Fields read'}</div>
-      {isCheque ? (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 10 }}>
-            <FieldInput label="Cheque #" value={form.check_number} onChange={set('check_number')} mono disabled={!editable} />
-            <FieldInput label="Cheque date" type="date" value={form.check_date} onChange={set('check_date')} disabled={!editable} />
-            <FieldInput label="Cheque amount" value={form.amount} onChange={set('amount')} disabled={!editable} placeholder="0.00" />
+        {checks.length > 0 && (
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ ...sectionLabel, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              Checks
+              <span style={{ ...countPill, background: C.primLt, color: C.primary }}>{passed} passed</span>
+              {failed > 0 && <span style={{ ...countPill, background: C.redLt, color: C.red }}>{failed} failed</span>}
+            </div>
+            <div style={{ border: `1px solid ${C.borderLt}`, borderRadius: 10, overflow: 'hidden' }}>
+              {checks.map((c, i) => (
+                <div key={i} style={{
+                  display: 'grid', alignItems: 'start', columnGap: 10, rowGap: 2, padding: '9px 14px',
+                  gridTemplateColumns: narrow ? '20px minmax(0, 1fr)' : '20px minmax(140px, 230px) minmax(0, 1fr)',
+                  background: c.ok ? C.card : '#fff8f8',
+                  borderTop: i ? `1px solid ${C.borderLt}` : 'none',
+                }}>
+                  <span style={{
+                    width: 20, height: 20, borderRadius: '50%', marginTop: 1,
+                    background: c.ok ? C.primLt : C.redLt,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {c.ok
+                      ? <Check size={12} color={C.primary} strokeWidth={3} />
+                      : <X size={12} color={C.red} strokeWidth={3} />}
+                  </span>
+                  <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.45, color: c.ok ? C.textB : C.red }}>{c.name}</span>
+                  {c.detail
+                    ? <span style={{ fontSize: 14, lineHeight: 1.45, color: c.ok ? C.textSm : '#b91c1c', overflowWrap: 'anywhere', gridColumn: narrow ? '2' : undefined }}>{c.detail}</span>
+                    : !narrow && <span />}
+                </div>
+              ))}
+            </div>
           </div>
-          <div style={{ marginTop: 12, border: `1px solid ${C.border}`, borderRadius: 8, overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 460 }}>
-              <thead>
-                <tr style={{ background: C.panel }}>
-                  {['Invoice #', 'Invoice amt', 'Deduction', 'Amount paid', ''].map((h, i) => (
-                    <th key={i} style={{ padding: '7px 10px', fontSize: 11, fontWeight: 700, color: C.textMut, textAlign: i === 0 ? 'left' : 'right', borderBottom: `1px solid ${C.border}` }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {form.lines.length === 0 && (
-                  <tr><td colSpan={5} style={{ padding: '10px', fontSize: 12.5, color: C.textMut, textAlign: 'center' }}>No invoice lines read from this cheque.</td></tr>
-                )}
-                {form.lines.map((l, i) => (
-                  <tr key={i} style={{ borderTop: i ? `1px solid ${C.border}` : 'none' }}>
-                    <td style={{ padding: '5px 8px' }}>
-                      <input value={l.invoice_number} disabled={!editable} onChange={e => setLine(i, 'invoice_number', e.target.value)}
-                        style={{ ...inputStyle, fontFamily: 'monospace', background: editable ? C.card : C.panel }} />
-                    </td>
-                    <td style={{ padding: '5px 10px', fontSize: 12.5, color: C.textSm, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{l.invoice_amount != null ? fmtMoney(l.invoice_amount) : '—'}</td>
-                    <td style={{ padding: '5px 10px', fontSize: 12.5, color: C.textSm, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{l.deduction != null ? fmtMoney(l.deduction) : '—'}</td>
-                    <td style={{ padding: '5px 8px', width: 140 }}>
-                      <input value={l.amount_paid} disabled={!editable} inputMode="decimal" onChange={e => setLine(i, 'amount_paid', e.target.value)}
-                        style={{ ...inputStyle, textAlign: 'right', background: editable ? C.card : C.panel }} />
-                    </td>
-                    <td style={{ padding: '5px 8px', width: 36 }}>
-                      {editable && (
-                        <button type="button" onClick={() => removeLine(i)} title="Remove line" style={{
-                          width: 26, height: 26, borderRadius: 6, border: `1px solid ${C.border}`, background: C.card,
-                          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-                        }}><Trash2 size={12} color={C.red} /></button>
-                      )}
-                    </td>
+        )}
+
+        {/* Editable fields */}
+        <div style={sectionLabel}>{editable ? 'Fields (edit before approving)' : 'Fields read'}</div>
+        {isCheque ? (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12, maxWidth: 720 }}>
+              <FieldInput label="Cheque #" value={form.check_number} onChange={set('check_number')} mono disabled={!editable} />
+              <FieldInput label="Cheque date" type="date" value={form.check_date} onChange={set('check_date')} disabled={!editable} />
+              <FieldInput label="Cheque amount" value={form.amount} onChange={set('amount')} disabled={!editable} placeholder="0.00" />
+            </div>
+            <div style={{ marginTop: 16, border: `1px solid ${C.border}`, borderRadius: 10, overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
+                <thead>
+                  <tr>
+                    <th style={th('left')}>Invoice #</th>
+                    <th style={th('right')}>Invoice amt</th>
+                    <th style={th('right')}>Deduction</th>
+                    <th style={{ ...th('right'), width: 170 }}>Amount paid</th>
+                    <th style={{ ...th('right'), width: 52 }} aria-label="Actions" />
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {form.lines.length === 0 && (
+                    <tr><td colSpan={5} style={{ padding: '16px 12px', fontSize: 14, color: C.textMut, textAlign: 'center' }}>No invoice lines read from this cheque.</td></tr>
+                  )}
+                  {form.lines.map((l, i) => (
+                    <tr key={i} className="lc-trow" style={{ background: C.card, borderTop: i ? `1px solid ${C.borderLt}` : 'none' }}>
+                      <td style={{ padding: '6px 8px 6px 12px' }}>
+                        <input value={l.invoice_number} disabled={!editable} onChange={e => setLine(i, 'invoice_number', e.target.value)}
+                          aria-label={`Line ${i + 1} invoice #`} className="lc-select"
+                          style={{ ...inputStyle, height: 36, minWidth: 118, maxWidth: 260, fontFamily: FONT_MONO, fontSize: 14, background: editable ? C.card : C.panel }} />
+                      </td>
+                      <td style={{ ...amountCell, color: C.text, fontWeight: 500 }}>{l.invoice_amount != null ? fmtMoney(l.invoice_amount) : dash}</td>
+                      <td style={{ ...amountCell, color: C.textSm }}>{l.deduction != null ? fmtMoney(l.deduction) : dash}</td>
+                      <td style={{ padding: '6px 8px' }}>
+                        <input value={l.amount_paid} disabled={!editable} inputMode="decimal" onChange={e => setLine(i, 'amount_paid', e.target.value)}
+                          aria-label={`Line ${i + 1} amount paid`} className="lc-select"
+                          style={{ ...inputStyle, height: 36, textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums', background: editable ? C.card : C.panel }} />
+                      </td>
+                      <td style={{ padding: '6px 12px 6px 4px', textAlign: 'right' }}>
+                        {editable && (
+                          <button type="button" onClick={() => removeLine(i)} title="Remove line" aria-label={`Remove line ${i + 1}`}
+                            className="lc-del lc-focus" style={{
+                            width: 32, height: 32, borderRadius: 8, border: `1px solid ${C.border}`, background: C.card,
+                            cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                          }}><Trash2 size={14} color={C.red} /></button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
+              <div>{editable && <Btn variant="subtle" size="sm" onClick={addLine}><Plus size={14} /> Add line</Btn>}</div>
+              {form.lines.length > 0 && (
+                <span style={{
+                  fontSize: 14, fontVariantNumeric: 'tabular-nums', padding: '5px 12px', borderRadius: 8,
+                  color: linesMismatch ? C.red : C.textSm, fontWeight: linesMismatch ? 600 : 500,
+                  background: linesMismatch ? C.redLt : C.panel, border: `1px solid ${linesMismatch ? '#fecaca' : C.borderLt}`,
+                }}>
+                  Lines total <strong style={{ color: linesMismatch ? C.red : C.textB }}>{fmtMoney(linesTotal)}</strong>
+                  {linesMismatch ? ` — differs from cheque amount ${fmtMoney(chequeAmt)}` : ''}
+                </span>
+              )}
+            </div>
+          </>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12 }}>
+            <FieldInput label="Invoice #" value={form.invoice_number} onChange={set('invoice_number')} mono disabled={!editable} />
+            <FieldInput label="PO #" value={form.po_number} onChange={set('po_number')} mono disabled={!editable} />
+            <FieldInput label="Unit #" value={form.unit_number} onChange={set('unit_number')} mono disabled={!editable} />
+            <FieldInput label="Invoice date" type="date" value={form.invoice_date} onChange={set('invoice_date')} disabled={!editable} />
+            <FieldInput label="Invoice amount" value={form.invoice_amount} onChange={set('invoice_amount')} disabled={!editable} placeholder="0.00" />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
-            {editable && <Btn variant="subtle" size="sm" onClick={addLine}><Plus size={12} /> Add line</Btn>}
-            {form.lines.length > 0 && (
-              <span style={{ fontSize: 12, color: linesMismatch ? C.red : C.textSm, fontWeight: linesMismatch ? 600 : 400 }}>
-                Lines total {fmtMoney(linesTotal)}{linesMismatch ? ` — differs from cheque amount ${fmtMoney(chequeAmt)}` : ''}
-              </span>
-            )}
-          </div>
-        </>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 10 }}>
-          <FieldInput label="Invoice #" value={form.invoice_number} onChange={set('invoice_number')} mono disabled={!editable} />
-          <FieldInput label="PO #" value={form.po_number} onChange={set('po_number')} mono disabled={!editable} />
-          <FieldInput label="Unit #" value={form.unit_number} onChange={set('unit_number')} mono disabled={!editable} />
-          <FieldInput label="Invoice date" type="date" value={form.invoice_date} onChange={set('invoice_date')} disabled={!editable} />
-          <FieldInput label="Invoice amount" value={form.invoice_amount} onChange={set('invoice_amount')} disabled={!editable} placeholder="0.00" />
-        </div>
-      )}
+        )}
 
-      {(job.reviewed_at || job.review_note) && (
-        <div style={{ fontSize: 12, color: C.textSm, marginTop: 12 }}>
-          Reviewed{job.reviewed_by ? ` by ${names[job.reviewed_by] || 'admin'}` : ''}{job.reviewed_at ? ` · ${fmtDateTime(job.reviewed_at)}` : ''}
-          {job.review_note ? <> — <em>{job.review_note}</em></> : null}
-        </div>
-      )}
+        {(job.reviewed_at || job.review_note) && (
+          <div style={{ fontSize: 13.5, color: C.textSm, marginTop: 14 }}>
+            Reviewed{job.reviewed_by ? ` by ${names[job.reviewed_by] || 'admin'}` : ''}{job.reviewed_at ? ` · ${fmtDateTime(job.reviewed_at)}` : ''}
+            {job.review_note ? <> — <em>{job.review_note}</em></> : null}
+          </div>
+        )}
+      </div>
 
       {/* Actions */}
       {editable && (
-        <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
+        <div style={framed
+          ? { padding: '12px 20px', background: C.panel, borderTop: `1px solid ${C.borderLt}` }
+          : { marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
           {rejecting ? (
             <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: C.textSm, marginBottom: 4 }}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.textSm, marginBottom: 6 }}>
                 Reason for rejecting {job.kind === 'invoice' ? '(shown to the customer)' : ''}
               </label>
               <textarea value={note} onChange={e => { setNote(e.target.value); setError('') }} rows={2} autoFocus
-                placeholder="e.g. Not a Ryder invoice / unreadable copy — please re-upload"
-                style={{ ...inputStyle, resize: 'vertical' }} />
-              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-                <Btn variant="danger" size="sm" onClick={reject} disabled={!!busy}>{busy === 'reject' ? 'Rejecting…' : 'Confirm reject'}</Btn>
-                <Btn variant="secondary" size="sm" onClick={() => { setRejecting(false); setError('') }} disabled={!!busy}>Cancel</Btn>
+                placeholder="e.g. Not a Ryder invoice / unreadable copy — please re-upload" className="lc-select"
+                style={{ ...inputStyle, height: 'auto', padding: '9px 11px', resize: 'vertical', lineHeight: 1.45 }} />
+              <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                <Btn variant="danger" onClick={reject} disabled={!!busy}>{busy === 'reject' ? 'Rejecting…' : 'Confirm reject'}</Btn>
+                <Btn variant="secondary" onClick={() => { setRejecting(false); setError('') }} disabled={!!busy}>Cancel</Btn>
               </div>
             </div>
           ) : (
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <Btn size="sm" onClick={approve} disabled={!!busy}><Check size={12} /> {busy === 'approve' ? 'Saving…' : 'Approve & save'}</Btn>
-              <Btn variant="secondary" size="sm" onClick={() => run('retry')} disabled={!!busy}><RotateCcw size={12} /> {busy === 'retry' ? 'Reading again…' : 'Retry reading'}</Btn>
-              <Btn variant="ghost" size="sm" style={{ color: C.red }} onClick={() => { setRejecting(true); setError('') }} disabled={!!busy}><X size={12} /> Reject</Btn>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <Btn onClick={approve} disabled={!!busy}><Check size={15} strokeWidth={2.6} /> {busy === 'approve' ? 'Saving…' : 'Approve & save'}</Btn>
+              <Btn variant="secondary" onClick={() => run('retry')} disabled={!!busy}><RotateCcw size={14} /> {busy === 'retry' ? 'Reading again…' : 'Retry reading'}</Btn>
+              <Btn variant="ghost" className="lc-btn-redghost" style={{ color: C.red }} onClick={() => { setRejecting(true); setError('') }} disabled={!!busy}><X size={14} /> Reject</Btn>
             </div>
           )}
-          {error && <div style={{ fontSize: 12.5, color: C.red, marginTop: 8 }}>{error}</div>}
+          {error && (
+            <div style={{ fontSize: 14, color: C.red, background: C.redLt, border: '1px solid #fecaca', borderRadius: 8, padding: '8px 12px', marginTop: 10 }}>{error}</div>
+          )}
         </div>
       )}
     </div>
@@ -396,7 +465,7 @@ export default function UploadReview({ onChanged }) {
           <div>
             <StatusPill label={s.label} tone={s.tone} />
             {j.status_reason && (
-              <div title={j.status_reason} style={{ fontSize: 11.5, color: C.textMut, marginTop: 3, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div title={j.status_reason} style={{ fontSize: 12.5, color: C.textMut, marginTop: 3, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {j.status_reason}
               </div>
             )}
@@ -410,9 +479,9 @@ export default function UploadReview({ onChanged }) {
     <div>
       {notice && (
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '10px 14px', borderRadius: 10,
+          display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, padding: '11px 16px', borderRadius: 10, border: '1px solid rgba(0,0,0,0.05)',
           background: (TONE[notice.tone] || TONE.info).bg, color: (TONE[notice.tone] || TONE.info).text,
-          fontSize: 13, fontWeight: 600,
+          fontSize: 14.5, fontWeight: 600,
         }}>
           <span style={{ flex: 1 }}>{notice.text}</span>
           <button type="button" onClick={() => setNotice(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'inherit', padding: 0, display: 'flex' }}><X size={14} /></button>
@@ -420,37 +489,38 @@ export default function UploadReview({ onChanged }) {
       )}
 
       <Card noPad>
-        <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}` }}>
           <Tabs active={tab} onChange={setTab} tabs={[
             { key: 'review', label: 'Needs review', count: reviewList.length },
             { key: 'all',    label: 'All uploads',  count: jobs.length },
           ]} />
         </div>
-        <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <SearchBar placeholder="Search file, invoice #, cheque #, client, reason…" value={search} onChange={setSearch} />
           <FilterChip label="Kind" options={['Invoice', 'Cheque']} value={kindFilter} onChange={setKindFilter} />
           {tab === 'all' && <FilterChip label="Status" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} />}
           {(search || kindFilter || (tab === 'all' && statusFilter)) && (
-            <Btn variant="ghost" size="sm" onClick={() => { setSearch(''); setKindFilter(''); setStatusFilter('') }}>
-              <X size={12} /> Clear filters
+            <Btn variant="ghost" onClick={() => { setSearch(''); setKindFilter(''); setStatusFilter('') }}>
+              <X size={14} /> Clear filters
             </Btn>
           )}
         </div>
 
         {loading ? (
-          <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>Loading uploads…</div>
+          <div style={{ padding: 32, textAlign: 'center', fontSize: 14.5, color: C.textMut }}>Loading uploads…</div>
         ) : error ? (
-          <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.red }}>{error}</div>
+          <div style={{ padding: 32, textAlign: 'center', fontSize: 14.5, color: C.red }}>{error}</div>
         ) : tab === 'review' ? (
           shownReview.length === 0 ? (
-            <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.textMut }}>
+            <div style={{ padding: 32, textAlign: 'center', fontSize: 14.5, color: C.textMut }}>
               {reviewList.length === 0 ? 'Nothing to review — every upload was read cleanly.' : 'No uploads match your filters.'}
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 12 }}>
+            /* Light-grey well so each white review card stands apart */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: 16, background: C.panel }}>
               {shownReview.map(j => (
-                <div key={j.id} style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: '14px 16px', background: C.card }}>
-                  <ReviewPanel job={j} names={names} onDone={handleDone} />
+                <div key={j.id} style={{ border: `1px solid ${C.border}`, borderRadius: 12, background: C.card, boxShadow: shadow, overflow: 'hidden' }}>
+                  <ReviewPanel job={j} names={names} onDone={handleDone} framed />
                 </div>
               ))}
             </div>
