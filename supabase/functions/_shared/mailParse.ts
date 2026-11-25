@@ -48,7 +48,10 @@ export function viewerLink(html: string): string | null {
   const anchors = [...html.matchAll(/<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)]
   const view = anchors.find((a) => /view\s+invoice/i.test(a[2].replace(/<[^>]+>/g, '')))
     ?? anchors.find((a) => /docufree\.com\/docuview/i.test(a[1]))
-  return view ? decodeEntities(view[1]) : null
+  if (view) return decodeEntities(view[1])
+  // Plain-text emails (e.g. sent from a phone) carry the link as bare text.
+  const bare = decodeEntities(html).match(/https?:\/\/[^\s"'<>]*docufree\.com\/docuview[^\s"'<>]*/i)
+  return bare ? bare[0] : null
 }
 
 export function invoiceNumberFromPdfText(text: string): string | null {

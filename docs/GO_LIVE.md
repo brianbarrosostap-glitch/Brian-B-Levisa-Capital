@@ -28,12 +28,14 @@ Set: `SMTP_USER`, `SMTP_PASS`, `COMPOSIO_API_KEY`, `COMPOSIO_USER_ID`, `COMPOSIO
    ```
 8. `20261124000002_cron_send_emails.sql`, then `20261124000006_cron_scheduler_mailbox.sql`
    (jobs are off in `app_settings`, so the schedules do nothing yet).
+9. `20261125000001_connections.sql` (Connections tab: `connection_status`, `cron_status()`, hourly `check-connections` timer).
 
 ## 3. Deploy + switch the two webhook flows (same 10 minutes)
 - [ ] `.\deploy-functions.ps1 -Target prod` (types PROD to confirm).
       From this moment `submit-advance-request` emails RZR itself and `delete-invoice` archives itself.
 - [ ] n8n: deactivate **Send Confirmation Mail for Requested Amount to Customer** and **Removed Invoices Move To Removed Invoices By RZR**.
 - [ ] Merge `develop` → `main` → Vercel production build. Check the live site loads and the new tabs appear.
+- [ ] Connections tab → **Check now**: all 8 should be green (SMTP, Gemini, Composio Gmail/Drive/Sheets, both PDF services, timers). Fix any red card before going on.
 
 ## 4. Uploads instead of Drive folders
 - [ ] n8n: deactivate **Invoices Drive to Supabase** and **Cheques to Supabase and Drive Folders**.
@@ -41,8 +43,9 @@ Set: `SMTP_USER`, `SMTP_PASS`, `COMPOSIO_API_KEY`, `COMPOSIO_USER_ID`, `COMPOSIO
 
 ## 5. Mailbox (RZR replies + Ryder confirmations)
 - [ ] n8n: deactivate **Reply Confirmation for Advance Agreed Invoice by Customer** and **Recieved Invoice Confirmation from Ryder # via Email**.
-- [ ] Automation tab → `poll_mailbox` = **dry_run**, wait 5 min, check the Mailbox log (looks back 7 days; confirmations n8n already handled show "already acknowledged").
-- [ ] `poll_mailbox` = **live**.
+- [ ] PROD `app_settings`: **no** `mailbox_never_mark_read_from` row (that is DEV-only — it stops DEV marking Docufree emails read while n8n shares the mailbox). `mailbox_mark_read` absent or `["rzr_reply","ryder_confirmation"]`; Automation → Settings → *Ryder confirmation senders* = `workflow@docufree.com` only (DEV also lists test addresses).
+- [ ] Automation tab → `poll_mailbox` = **dry_run**, wait 5 min, check the Mailbox log (it reads UNREAD emails from the last 7 days only — n8n marked the ones it handled as read).
+- [ ] `poll_mailbox` = **live**. From now on each handled email is marked read in Gmail (as n8n did).
 
 ## 6. Timed jobs
 - [ ] n8n: deactivate **After 12 hour invoice Status Advance Paid** → Automation `auto_advance_paid` = **live**.

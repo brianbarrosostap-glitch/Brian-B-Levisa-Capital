@@ -62,6 +62,16 @@ function getTransport() {
   return transporter
 }
 
+/** Connects and logs in to the SMTP server without sending anything (Connections tab health check). */
+export async function verifySmtp(): Promise<{ user: string; host: string; port: number }> {
+  await getTransport().verify()
+  return {
+    user: Deno.env.get('SMTP_USER') ?? '',
+    host: Deno.env.get('SMTP_HOST') ?? 'smtp.gmail.com',
+    port: Number(Deno.env.get('SMTP_PORT') ?? 465),
+  }
+}
+
 /** Applies EMAIL_ALLOWED_DOMAINS / EMAIL_REDIRECT_TO (dev safety net). */
 export function applyRedirect(input: MailInput): MailInput & { redirectedTo: string | null } {
   const redirect = (Deno.env.get('EMAIL_REDIRECT_TO') ?? '').trim()

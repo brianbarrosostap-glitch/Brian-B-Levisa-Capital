@@ -10,7 +10,7 @@ import {
   MoreVertical, Check, Upload, Inbox, ChevronRight, ExternalLink,
   BarChart2, Clock, DollarSign, Users, TrendingUp, ArrowRight,
   Mail, Phone, Percent, Calendar, Eye, Trash2, Edit3,
-  RefreshCw, XCircle, Info, Menu, LogOut, ChevronLeft
+  RefreshCw, XCircle, Info, Menu, LogOut, ChevronLeft, Loader2
 } from 'lucide-react';
 
 /* ─── Responsive helpers ────────────────────────────────────── */
@@ -300,6 +300,19 @@ export const ModalFooter = ({ children }) => (
 // implementation for every page). Active = deeper green tint + hairline
 // ring + green left bar + green icon. Hover / transitions live in index.css (.lc-nav).
 const navBadgeText = (n) => (typeof n === 'number' && n > 99 ? '99+' : n);
+/** A labelled group of NavItems in the sidebar (label omitted = no header). */
+export const NavSection = ({ label, children }) => (
+  <div role="group" aria-label={label || undefined} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+    {label && (
+      <div style={{
+        fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+        color: 'rgba(255,255,255,0.42)', padding: '12px 12px 5px',
+      }}>{label}</div>
+    )}
+    {children}
+  </div>
+);
+
 export const NavItem = ({ icon: Icon, label, active, badge, onClick }) => (
   <button onClick={onClick} className={`lc-nav${active ? ' is-active' : ''}`} aria-current={active ? 'page' : undefined}
     title={label} style={{
@@ -531,6 +544,51 @@ export const KebabMenu = ({ items }) => {
     </div>
   );
 };
+
+/* ─── Busy spinner + toast notices ──────────────────────────── */
+export const Spinner = ({ size = 14, color }) => (
+  <Loader2 size={size} color={color} className="lc-spin" aria-hidden="true" style={{ flexShrink: 0 }} />
+);
+
+/** Small "working…" pill shown next to a row while its action runs. */
+export const BusyPill = ({ children }) => (
+  <span role="status" style={{
+    display: 'inline-flex', alignItems: 'center', gap: 6, height: 22, padding: '0 9px', borderRadius: 9999,
+    background: C.infoLt, color: C.info, boxShadow: `inset 0 0 0 1px ${C.info}26`,
+    fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
+  }}><Spinner size={12} /> {children}</span>
+);
+
+const TOAST_TONE = {
+  success: { bg: '#f0fdf4', border: '#bbf7d0', text: '#166534', Icon: CheckCircle2 },
+  warn:    { bg: '#fffbeb', border: '#fde68a', text: '#92400e', Icon: AlertTriangle },
+  danger:  { bg: '#fef2f2', border: '#fecaca', text: '#991b1b', Icon: AlertCircle },
+};
+
+/** Bottom-right stack of short notices. toasts: [{ id, tone, text }] */
+export const ToastStack = ({ toasts, onDismiss }) => (
+  <div aria-live="polite" style={{
+    position: 'fixed', right: 20, bottom: 20, zIndex: 2000, display: 'flex', flexDirection: 'column', gap: 8,
+    width: 'min(420px, calc(100vw - 40px))', pointerEvents: 'none',
+  }}>
+    {toasts.map(t => {
+      const s = TOAST_TONE[t.tone] || TOAST_TONE.success;
+      return (
+        <div key={t.id} role={t.tone === 'danger' ? 'alert' : 'status'} style={{
+          pointerEvents: 'auto', display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 12px 11px 14px',
+          background: s.bg, border: `1px solid ${s.border}`, borderRadius: 10, color: s.text,
+          boxShadow: '0 8px 24px rgba(16,24,40,0.12)', fontSize: 14, lineHeight: 1.45,
+        }}>
+          <s.Icon size={17} style={{ flexShrink: 0, marginTop: 1 }} />
+          <span style={{ flex: 1, minWidth: 0, overflowWrap: 'break-word' }}>{t.text}</span>
+          <button type="button" aria-label="Dismiss" onClick={() => onDismiss(t.id)} className="lc-focus" style={{
+            border: 'none', background: 'transparent', color: s.text, cursor: 'pointer', padding: 2, borderRadius: 6, display: 'flex', opacity: 0.7,
+          }}><X size={15} /></button>
+        </div>
+      );
+    })}
+  </div>
+);
 
 /* ─── Pagination bar ───────────────────────────────────────── */
 // Shared by Master (server-side pages) and Automation (pages over a fetched list).

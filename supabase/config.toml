@@ -96,6 +96,10 @@ verify_jwt = false
 [functions.poll-mailbox]
 verify_jwt = false
 
+# Hourly cron (x-internal-secret) or an admin "Check now" (checks the JWT itself).
+[functions.check-connections]
+verify_jwt = false
+
 [functions.import-drive-files]
 verify_jwt = false
 

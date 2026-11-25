@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Check, X, Upload } from 'lucide-react'
 import { C, ROW_BG, adminStatus, ADMIN_STATUS_LABEL, FONT_MONO } from '../../tokens'
-import { Card, Btn, Badge, Tabs, SearchBar, FilterChip, KebabMenu, TH, TD, Modal, ModalBody, ModalFooter, Pager, useIsMobile } from '../../components/ui'
+import { Card, Btn, Badge, Tabs, SearchBar, FilterChip, KebabMenu, TH, TD, Modal, ModalBody, ModalFooter, Pager, Spinner, BusyPill, ToastStack, useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
 import InvoiceDetailModal from './InvoiceDetailModal'
 import { usePersistentState } from '../../hooks/usePersistentState'
 import { useDebounced } from '../../hooks/useDebounced'
 import UploadDocumentModal from '../../components/UploadDocumentModal'
 import { STATUS_GROUPS } from '../../lib/masterFilters'
+import { errorMessage } from '../../lib/errors'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtAdv = n => n == null ? '—' : 'ADV-' + String(n).padStart(4, '0')
@@ -221,7 +222,7 @@ function StatusActionModal({ inv, action, onClose, onDone }) {
           <ModalFooter>
             <Btn variant="secondary" onClick={() => setStep('input')} disabled={loading}>← Back</Btn>
             <Btn onClick={handleSave} disabled={loading}>
-              {loading ? 'Saving…' : 'Yes, Update Status'}
+              {loading ? <><Spinner /> {action === 'Resubmitted' ? 'Sending to Ryder…' : 'Saving…'}</> : 'Yes, Update Status'}
             </Btn>
           </ModalFooter>
         </>
@@ -229,6 +230,16 @@ function StatusActionModal({ inv, action, onClose, onDone }) {
     </Modal>
   )
 }
+
+let toastSeq = 0   // ids for the row-action notices
+
+/** Takes the row menu's place while that row's action runs. */
+const RowSpinner = ({ label }) => (
+  <span role="status" aria-label={label} title={label} style={{
+    width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    borderRadius: 8, border: `1px solid ${C.border}`, background: '#fff', color: C.info,
+  }}><Spinner size={15} /></span>
+)
 
 export default function Master() {
   const isMobile = useIsMobile()
@@ -426,11 +437,37 @@ export default function Master() {
   const listTotalAdvance = list.reduce((s, i) => s + Number(i.advance_amount), 0)
   const statuses = tab === 'active' ? ACTIVE_STATUSES : DEAD
 
+  // Row-menu quick actions: the row shows a spinner while the call runs, then a notice says how it went.
+  const [busyRows, setBusyRows] = useState({})   // invoice id → "working…" label
+  const [toasts, setToasts]     = useState([])
+  const dismissToast = (id) => setToasts(t => t.filter(x => x.id !== id))
+  const pushToast = (tone, text) => {
+    const id = ++toastSeq
+    setToasts(t => [...t.slice(-3), { id, tone, text }])
+    setTimeout(() => dismissToast(id), tone === 'success' ? 5000 : 9000)
+  }
+  const QUICK = {
+    resubmit:           { busy: 'Resubmitting…', done: n => `Invoice ${n} resubmitted — the PDF is on its way to Ryder.` },
+    mark_advance_paid:  { busy: 'Marking paid…',  done: n => `Invoice ${n} marked Advance Paid — RZR gets the “paid” email.` },
+    mark_ryder_paid:    { busy: 'Marking paid…',          done: n => `Invoice ${n} marked Paid.` },
+    mark_paid_override: { busy: 'Marking paid…',          done: n => `Invoice ${n} marked Paid.` },
+    set_status:         { busy: 'Updating…',       done: (n, st) => `Invoice ${n} → ${adminStatus(st)}.` },
+  }
   const handleMarkStatus = async (inv, action, status) => {
+    if (busyRows[inv.id]) return   // already working on this invoice
+    const q = QUICK[action] || QUICK.set_status
+    setBusyRows(b => ({ ...b, [inv.id]: q.busy }))
     try {
-      await callFunction('mark-invoice-status', { invoice_id: inv.id, action, status })
-      fetchInvoices()
-    } catch (e) { console.error(e) }
+      const r = await callFunction('mark-invoice-status', { invoice_id: inv.id, action, status })
+      if (r?.email_warning) pushToast('warn', `Invoice ${inv.invoice_number}: ${r.email_warning}`)
+      else pushToast('success', q.done(inv.invoice_number, status))
+      await fetchInvoices()
+    } catch (e) {
+      console.error(e)
+      pushToast('danger', `Invoice ${inv.invoice_number}: ${await errorMessage(e, 'the status could not be updated')}`)
+    } finally {
+      setBusyRows(b => { const next = { ...b }; delete next[inv.id]; return next })
+    }
   }
 
   // Open the status-action modal for the 4 new manual status transitions.
@@ -525,6 +562,7 @@ export default function Master() {
                     <Badge status={inv.status} label={adminStatus(inv.status)} />
                   </div>
                 </div>
+                {busyRows[inv.id] && <div style={{ marginBottom: 8 }}><BusyPill>{busyRows[inv.id]}</BusyPill></div>}
                 {[
                   ['Invoice Date', new Date(inv.invoice_date).toLocaleDateString()],
                   ['PO #', inv.po_number || '—'],
@@ -542,7 +580,7 @@ export default function Master() {
                   </div>
                 ))}
                 <div style={{ marginTop: 8, borderTop: `1px solid ${C.border}`, paddingTop: 8, display: 'flex', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
-                  <KebabMenu items={[
+                  {busyRows[inv.id] ? <RowSpinner label={busyRows[inv.id]} /> : <KebabMenu items={[
                     { label: 'View Detail', onClick: () => setDetailModal(inv) },
                     { label: 'Mark Advance Paid', onClick: () => handleMarkStatus(inv, 'mark_advance_paid') },
                     { label: 'Submitted to Ryder', onClick: () => openStatusAction(inv, 'Submitted to Ryder') },
@@ -552,7 +590,7 @@ export default function Master() {
                     { label: 'Mark Ryder Paid',   onClick: () => handleMarkStatus(inv, 'mark_ryder_paid') },
                     { label: 'Mark Paid (override)', onClick: () => handleMarkStatus(inv, 'mark_paid_override') },
                     { label: 'Cancel Invoice', danger: true, onClick: () => handleMarkStatus(inv, 'set_status', 'Cancelled') },
-                  ]} />
+                  ]} />}
                 </div>
               </div>
             ))}
@@ -583,7 +621,7 @@ export default function Master() {
             </thead>
             <tbody>
               {list.map(inv => (
-                <tr key={inv.id} className="lc-trow"
+                <tr key={inv.id} className="lc-trow" aria-busy={!!busyRows[inv.id]}
                   style={{ background: ROW_BG[inv.status] || '#fff', cursor: 'pointer' }}
                   onClick={() => setDetailModal(inv)}
                 >
@@ -622,17 +660,18 @@ export default function Master() {
                           borderRadius: 9999, fontSize: 12, fontWeight: 700, padding: '0 8px', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums',
                         }}>↻ {inv.resubmit_count}×</span>
                       )}
+                      {busyRows[inv.id] && <BusyPill>{busyRows[inv.id]}</BusyPill>}
                     </div>
                   </TD>
                   <TD style={{ padding: '0 12px 0 6px', width: 42, ...STICKY_RIGHT, background: 'inherit' }} onClick={e => e.stopPropagation()}>
-                    <KebabMenu items={[
+                    {busyRows[inv.id] ? <RowSpinner label={busyRows[inv.id]} /> : <KebabMenu items={[
                       { label: 'View Detail', onClick: () => setDetailModal(inv) },
                       { label: 'Mark Advance Paid', onClick: () => handleMarkStatus(inv, 'mark_advance_paid') },
                       { label: 'Mark Ryder Paid',   onClick: () => handleMarkStatus(inv, 'mark_ryder_paid') },
                       { label: 'Mark Paid (override)', onClick: () => handleMarkStatus(inv, 'mark_paid_override') },
                       { label: 'Resubmit',  onClick: () => handleMarkStatus(inv, 'resubmit') },
                       { label: 'Cancel Invoice', danger: true, onClick: () => handleMarkStatus(inv, 'set_status', 'Cancelled') },
-                    ]} />
+                    ]} />}
                   </TD>
                 </tr>
               ))}
@@ -665,6 +704,8 @@ export default function Master() {
             onPage={setPage} onPageSize={setPageSize} sizes={PAGE_SIZES} compact={isMobile} />
         )}
       </Card>
+
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
 
       {activeBatch && (
         <BatchModal

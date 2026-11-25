@@ -11,10 +11,18 @@
  *   • "Received Invoice Confirmation from Ryder # via Email"
  *       Docufree "Invoice Confirmation from Ryder #<conf>" → open the
  *       "View Invoice" link with the PDF downloader → read "Invoice #" →
- *       Acknowledged + conf # + 60-day due date.
+ *       Acknowledged + conf # + 60-day due date. Senders come from
+ *       app_settings.ryder_confirmation_senders (default workflow@docufree.com).
+ *       From any other allowed sender (a typed test confirmation) the portal
+ *       invoice number written in the subject/body is used first; the link
+ *       (also a bare pasted docuview URL) only if there is none.
  *
- * Read-only on Gmail: nothing is marked read/labelled. Each message is handled
- * once (public.processed_emails), so opening it in Gmail first changes nothing.
+ * Like n8n: only UNREAD emails are read, and each one is marked read once it
+ * has been handled (live mode, final result — errors stay unread so someone
+ * notices). app_settings.mailbox_mark_read lists which kinds are marked
+ * (default both). app_settings.mailbox_never_mark_read_from lists senders that
+ * are never marked (DEV: workflow@docufree.com, while prod n8n shares the mailbox).
+ * public.processed_emails still makes each message run only once.
  *
  * Called by pg_cron every 5 min (x-internal-secret) or by an admin.
  * Obeys app_settings.automation.poll_mailbox (off | dry_run | live).
@@ -24,17 +32,18 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { HttpError, json, preflight } from '../_shared/http.ts'
 import { adminClient, isInternalCall, requireRole } from '../_shared/auth.ts'
 import { getSettings, jobMode, logJobRun } from '../_shared/settings.ts'
-import { fetchEmails, type GmailMessage } from '../_shared/composio.ts'
+import { fetchEmails, markEmailRead, type GmailMessage } from '../_shared/composio.ts'
 import { applyRyderConfirmation, markAdvanceAgreed } from '../_shared/ingest.ts'
 import { downloadViewerPdf, pdfText } from '../_shared/files.ts'
 import { kickOutbox, queueEmail } from '../_shared/outbox.ts'
 import { notApprovedEmail } from '../_shared/templates.ts'
 import {
-  invoiceNumberFromPdfText, invoiceNumbersFromSubject, isApproval, newReplyText, viewerLink,
+  htmlToText, invoiceNumberFromPdfText, invoiceNumbersFromSubject, isApproval, newReplyText, viewerLink,
 } from '../_shared/mailParse.ts'
 
 const MAX_RYDER_PER_RUN = 4   // each needs a headless-browser PDF download (~10–30 s)
 const MAX_ATTEMPTS = 3
+const MAX_MARK_READ_PER_RUN = 30   // one Composio call each
 
 // ── Handlers ─────────────────────────────────────────────────
 
@@ -80,15 +89,59 @@ async function handleRzrReply(
   return { kind: 'rzr_reply', result: 'not_approved', invoice_numbers: numbers, detail: { reply: reply.slice(0, 300) } }
 }
 
-async function handleRyderConfirmation(admin: SupabaseClient, m: GmailMessage, live: boolean): Promise<Outcome> {
-  const conf = m.subject.match(/#\s*(\d+)/)?.[1] ?? null
-  const link = viewerLink(m.html)
-  if (!link) return { kind: 'ryder_confirmation', result: 'error', invoice_numbers: [], detail: { conf, reason: 'no "View Invoice" link in email' } }
-  const text = await pdfText(await downloadViewerPdf(link))
-  const invoiceNumber = invoiceNumberFromPdfText(text)
-  if (!invoiceNumber) {
-    return { kind: 'ryder_confirmation', result: 'error', invoice_numbers: [], detail: { conf, link, reason: 'Invoice # not found in the PDF' } }
+const DOCUFREE = 'workflow@docufree.com'
+
+/**
+ * Portal invoice numbers written in an email (subject + body). Only numbers that are real
+ * portal invoices count, so dates, amounts or a confirmation # can't match by accident.
+ * `exclude` drops one number (Docufree's confirmation # in the subject).
+ */
+async function portalInvoiceNumbersIn(admin: SupabaseClient, m: GmailMessage, exclude: string | null): Promise<string[]> {
+  for (const text of [`${m.subject}\n${newReplyText(m.html)}`, htmlToText(m.html)]) {
+    const nums = [...new Set((text.match(/\b\d{5,12}\b/g) ?? []).filter((n) => n !== exclude))]
+    if (!nums.length) continue
+    const { data } = await admin.from('invoices').select('invoice_number').in('invoice_number', nums)
+    const found = (data ?? []).map((r) => r.invoice_number as string)
+    if (found.length) return found
   }
+  return []
+}
+
+async function handleRyderConfirmation(admin: SupabaseClient, m: GmailMessage, live: boolean): Promise<Outcome> {
+  const subjectNumber = m.subject.match(/#\s*(\d+)/)?.[1] ?? null
+  const link = viewerLink(m.html)
+  const fromDocufree = m.fromEmail === DOCUFREE
+  let numbers: string[] = []
+  let conf = subjectNumber
+
+  // A confirmation typed by someone else (test / forwarded): the invoice number written in it
+  // wins — any pasted Docufree link may belong to another invoice.
+  if (!fromDocufree) {
+    numbers = await portalInvoiceNumbersIn(admin, m, null)
+    if (numbers.length && subjectNumber && numbers.includes(subjectNumber)) conf = null   // the "#" number was the invoice, not a conf #
+  }
+  if (!numbers.length && link) {
+    // Real Docufree email: open the "View Invoice" link and read "Invoice #" from the PDF.
+    const invoiceNumber = invoiceNumberFromPdfText(await pdfText(await downloadViewerPdf(link)))
+    if (!invoiceNumber) {
+      return { kind: 'ryder_confirmation', result: 'error', invoice_numbers: [], detail: { conf, link, reason: 'Invoice # not found in the PDF' } }
+    }
+    numbers = [invoiceNumber]
+  }
+  if (!numbers.length && fromDocufree) numbers = await portalInvoiceNumbersIn(admin, m, subjectNumber)
+  if (!numbers.length) {
+    return { kind: 'ryder_confirmation', result: 'error', invoice_numbers: [], detail: { conf, reason: 'no "View Invoice" link and no portal invoice number in the email' } }
+  }
+  if (numbers.length > 1) {
+    // Several invoices in one (typed) confirmation — acknowledge each.
+    const parts = await Promise.all(numbers.map((n) => confirmOne(admin, n, conf, live, link)))
+    const results = [...new Set(parts.map((o) => o.result))]
+    return { kind: 'ryder_confirmation', result: results.length === 1 ? results[0] : 'acknowledged', invoice_numbers: numbers, detail: { conf, each: parts.map((o) => ({ invoice: o.invoice_numbers[0], result: o.result })) } }
+  }
+  return confirmOne(admin, numbers[0], conf, live, link)
+}
+
+async function confirmOne(admin: SupabaseClient, invoiceNumber: string, conf: string | null, live: boolean, link: string | null): Promise<Outcome> {
   if (!live) {
     const { data: cur } = await admin.from('invoices').select('status, ryder_confirmed_at').eq('invoice_number', invoiceNumber).maybeSingle()
     const would = !cur ? 'no match (not in portal)' : cur.ryder_confirmed_at ? `nothing — already acknowledged (${cur.status})` : 'Acknowledged'
@@ -103,7 +156,7 @@ async function handleRyderConfirmation(admin: SupabaseClient, m: GmailMessage, l
     await admin.from('notifications').insert({
       audience: 'admin',
       title: `Ryder confirmation for unknown invoice ${invoiceNumber}`,
-      body: `Docufree confirmation #${conf ?? '?'} refers to invoice ${invoiceNumber}, which is not in the portal.`,
+      body: `Ryder confirmation #${conf ?? '?'} refers to invoice ${invoiceNumber}, which is not in the portal.`,
     })
     return { kind: 'ryder_confirmation', result: 'no_match', invoice_numbers: [invoiceNumber], detail: { conf, link } }
   }
@@ -128,10 +181,12 @@ Deno.serve(async (req) => {
     const s = await getSettings(admin)
     const days = Number(s.mailbox_lookback_days ?? 7)
     const phrase = String(s.payment_request_subject ?? 'Payment Request for')
+    const confSenders = (Array.isArray(s.ryder_confirmation_senders) && s.ryder_confirmation_senders.length
+      ? (s.ryder_confirmation_senders as string[]) : ['workflow@docufree.com']).map((x) => x.trim().toLowerCase()).filter(Boolean)
 
     const [ryder, rzr] = await Promise.all([
-      fetchEmails(`from:workflow@docufree.com subject:"Invoice Confirmation from Ryder" newer_than:${days}d`, 100),
-      fetchEmails(`subject:"${phrase}" newer_than:${days}d -from:me`, 50),
+      fetchEmails(`is:unread from:(${confSenders.join(' OR ')}) subject:"Invoice Confirmation from Ryder" newer_than:${days}d`, 100),
+      fetchEmails(`is:unread subject:"${phrase}" newer_than:${days}d -from:me`, 50),
     ])
 
     const ids = [...ryder, ...rzr].map((m) => m.id)
@@ -145,9 +200,11 @@ Deno.serve(async (req) => {
     }
 
     const handled: Record<string, unknown>[] = []
+    const results = new Map<string, string>()   // message id → result recorded in this run (live only)
     const record = async (m: GmailMessage, o: Outcome) => {
       handled.push({ subject: m.subject, from: m.fromEmail, ...o })
       if (!live) return // dry run: nothing is recorded, so switching to live processes these for real
+      results.set(m.id, o.result)
       const prev = seenMap.get(m.id)
       const attempts = o.result === 'error' ? Number(prev?.detail?.attempts ?? 0) + 1 : undefined
       await admin.from('processed_emails').upsert({
@@ -173,13 +230,37 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── Mark handled emails as read (n8n did the same) ──
+    let markedRead = 0
+    const markErrors: string[] = []
+    if (live) {
+      const kinds = new Set<string>(Array.isArray(s.mailbox_mark_read)
+        ? (s.mailbox_mark_read as string[]) : ['rzr_reply', 'ryder_confirmation'])
+      // DEV shares the mailbox with prod n8n, which only reads UNREAD Docufree emails —
+      // so DEV lists workflow@docufree.com here and never marks those read.
+      const neverFrom = new Set(((s.mailbox_never_mark_read_from as string[]) ?? []).map((x) => x.toLowerCase()))
+      const resultOf = (m: GmailMessage) => results.get(m.id) ?? seenMap.get(m.id)?.result
+      const due = [
+        ...(kinds.has('rzr_reply') ? rzr : []),
+        ...(kinds.has('ryder_confirmation') ? ryder : []),
+      ].filter((m) => {
+        const r = resultOf(m)
+        return !!r && r !== 'error' && !neverFrom.has(m.fromEmail) && (m.labelIds.length === 0 || m.labelIds.includes('UNREAD'))
+      }).slice(0, MAX_MARK_READ_PER_RUN)
+      for (const m of due) {
+        try { await markEmailRead(m.id); markedRead++ } catch (err) { markErrors.push(`${m.subject}: ${String(err).slice(0, 200)}`) }
+      }
+    }
+
     const summary = {
       trigger: internal ? 'cron' : 'admin',
       found: { ryder: ryder.length, rzr: rzr.length },
       handled,
       ryder_backlog: Math.max(0, ryder.filter(pending).length - ryderDone),
+      marked_read: markedRead,
+      ...(markErrors.length ? { mark_read_errors: markErrors.slice(0, 5) } : {}),
     }
-    if (handled.length) {
+    if (handled.length || markedRead || markErrors.length) {
       await logJobRun(admin, 'poll_mailbox', mode, handled.some((h) => h.result === 'error') ? 'error' : 'ok', summary, undefined, startedAt)
       kickOutbox(admin)
     }

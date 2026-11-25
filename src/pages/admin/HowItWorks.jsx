@@ -3,7 +3,7 @@ import {
   Upload, Send, MailCheck, Banknote, Truck, BadgeCheck, Receipt, ArrowRight,
   Bell, AlertTriangle, ListChecks, Clock, Mail, Inbox, BookOpen, Info,
   ArrowUpRight, ArrowDownLeft, FileSearch, LayoutDashboard, ListOrdered, Archive,
-  Trash2, Bot, ScrollText, CalendarClock, Zap, User,
+  Trash2, Bot, ScrollText, CalendarClock, Zap, User, BellRing, Plug,
 } from 'lucide-react'
 import { C, shadow, FONT_MONO, STATUS_COLOURS, adminStatus, customerStatus } from '../../tokens'
 import { Card, Badge, PartyTag, useIsMobile, useViewportWidth } from '../../components/ui'
@@ -15,7 +15,7 @@ import { supabase } from '../../lib/supabase'
 
 const DEFAULTS = {
   auto_paid_hours: 12, ryder_wait_days: 7, resubmit_hours: 48,
-  rzr_email: '', ryder_ap_email: '', admin_alert_email: '', rzr_reply_senders: [],
+  rzr_email: '', ryder_ap_email: '', admin_alert_email: '', rzr_reply_senders: [], ryder_confirmation_senders: [],
 }
 const RAIL_MIN_WIDTH = 1360   // viewport width at which the sticky "On this page" rail appears
 
@@ -265,6 +265,8 @@ const SCREENS = [
   ['review', 'Upload Review', FileSearch, 'Uploads the portal couldn’t read cleanly — fix and approve, retry, or reject.'],
   ['past', 'Past Invoices', Archive, 'Finished invoices: Paid, Void and Cancelled.'],
   ['deleted', 'Deleted Invoices', Trash2, 'Invoices RZR or an admin deleted — restore them from here.'],
+  ['alerts', 'Alerts', BellRing, 'Every error in one place: broken connections, failed jobs, emails that could not be sent, failed uploads, mailbox emails not handled, open cheque alerts. The red badge counts problems from the last 24 hours.'],
+  ['connections', 'Connections', Plug, 'Live status of every outside service (Gmail sending, Gemini, Composio Gmail/Drive/Sheets, the PDF services, the timers), checked every hour — with steps to fix one that breaks.'],
   ['automation', 'Automation', Bot, 'Addresses and timings (Settings), every email sent, every scheduled run, and every email read. Advanced switches at the bottom pause a job.'],
   ['audit', 'Audit Logs', ScrollText, 'Who did what and when — every change, by a person or by the system.'],
 ]
@@ -345,6 +347,9 @@ export default function HowItWorks({ onNavigate }) {
   const senders = Array.isArray(cfg.rzr_reply_senders) && cfg.rzr_reply_senders.length
     ? cfg.rzr_reply_senders.map((s, i) => <React.Fragment key={s}>{i ? ', ' : ''}<Code>{s}</Code></React.Fragment>)
     : <B>the RZR reply senders</B>
+  const confFrom = Array.isArray(cfg.ryder_confirmation_senders) && cfg.ryder_confirmation_senders.length
+    ? cfg.ryder_confirmation_senders.map((s, i) => <React.Fragment key={s}>{i ? ', ' : ''}<Code>{s}</Code></React.Fragment>)
+    : <Code>workflow@docufree.com</Code>
   const go = (page, label) => <GoTo page={page} label={label} onNavigate={onNavigate} />
 
   const timing = {
@@ -497,8 +502,8 @@ export default function HowItWorks({ onNavigate }) {
         {/* ── 6 ── */}
         <Section id="s6" n={6} icon={BadgeCheck} title="Ryder confirms the invoice" lead="Ryder’s system (Docufree) emails a confirmation; the portal picks it up every 5 minutes.">
           <Steps rows={[
-            [<>An email from <Code>workflow@docufree.com</Code>, “<B>Invoice Confirmation from Ryder #&lt;conf&gt;</B>”, arrives in the Levisa mailbox.</>, null],
-            ['The portal opens its “View Invoice” link, reads the invoice number on that page, and records Ryder’s confirmation number.', <S s="Acknowledged" />],
+            [<>An email from {confFrom}, “<B>Invoice Confirmation from Ryder #&lt;conf&gt;</B>”, arrives in the Levisa mailbox.</>, null],
+            ['The portal opens its “View Invoice” link, reads the invoice number on that page, and records Ryder’s confirmation number. (An email without that link counts when its text contains the portal invoice number.)', <S s="Acknowledged" />],
             [<>A <B>due date 60 days</B> later is set. If the cheque hasn’t arrived by then the invoice counts as <B>Overdue</B> — it shows in Dashboard → Needs Attention and in the Master filter “Overdue with Ryder”.</>, null],
           ]} />
         </Section>
@@ -528,14 +533,16 @@ export default function HowItWorks({ onNavigate }) {
           <Direction>Read by the portal (every 5 minutes)</Direction>
           <SimpleTable head={['Email', 'From', 'What the portal does']} rows={[
             ['RZR’s reply to a payment request', senders, '“Approved/Accepted” → Advance Agreed. Anything else → not-approved alert to you.'],
-            ['Ryder invoice confirmation', <Code>workflow@docufree.com</Code>, 'Reads the invoice # → Acknowledged, confirmation # saved, 60-day due date set.'],
+            ['Ryder invoice confirmation', confFrom, 'Reads the invoice # → Acknowledged, confirmation # saved, 60-day due date set.'],
           ]} />
-          <Callout tone="good" icon={Inbox}>The portal only <B>reads</B> the mailbox — it never deletes, labels or marks emails as read, and it handles each email once. A failed send is retried automatically (up to 5 attempts); failures show in red in Automation → Emails.</Callout>
+          <Callout tone="good" icon={Inbox}>The portal looks only at <B>unread</B> emails and <B>marks each one read</B> once it has handled it (as n8n did) — it never deletes or moves emails, and it handles each email once. One it couldn’t handle stays unread so you notice it. A failed send is retried automatically (up to 5 attempts); failures show in red in Automation → Emails.</Callout>
         </Section>
 
         {/* ── Needs you ── */}
         <Section id="you" icon={AlertTriangle} title="When the system needs you" lead="Everything else runs on its own — check these places.">
           <SimpleTable head={['Where', 'What it means', 'What to do']} widths={['27%', '40%', '33%']} rows={[
+            [<Where icon={BellRing} tone="red">Alerts <span style={{ color: C.red, fontWeight: 500 }}>(red badge)</span></Where>, 'Everything that went wrong, from every part of the system, in one list.', <Then>Start here — each alert links to the screen where you fix it.</Then>],
+            [<Where icon={Plug} tone="amber">Connections</Where>, 'An outside service broke (e.g. the Gemini key expired, Gmail needs re-authorising). You also get a notification and an email.', <Then>Follow the “How to fix” steps on the card, then press Check now.</Then>],
             [<Where icon={FileSearch} tone="red">Upload Review <span style={{ color: C.red, fontWeight: 500 }}>(red badge)</span></Where>, 'An invoice failed a check, or a cheque photo couldn’t be read.', <Then>Correct the fields and “Approve &amp; save”, “Retry reading”, or Reject.</Then>],
             [<Where icon={Bell} tone="blue">Bell notifications</Where>, 'Not-approved replies from RZR, and every cheque applied — including lines that didn’t match or short payments.', <Then>Open and follow up.</Then>],
             [<Where icon={AlertTriangle} tone="amber">Dashboard → Needs Attention</Where>, 'Invoices overdue with Ryder (past the 60-day due date, cheque not received).', <Then>Click a row to open it in Master, then chase Ryder.</Then>],
@@ -614,6 +621,7 @@ export default function HowItWorks({ onNavigate }) {
             ['RZR email', rzr, 'Payment-request and “paid” emails'],
             ['RZR reply senders', senders, 'Whose replies can approve an advance'],
             ['Ryder AP email', ryder, 'Where invoices are submitted'],
+            ['Ryder confirmation senders', confFrom, 'Whose “Invoice Confirmation from Ryder” emails are read'],
             ['Admin alert email', alertTo, 'Not-approved replies and failure alerts'],
           ]} />
           <Callout tone="good" icon={CalendarClock}>

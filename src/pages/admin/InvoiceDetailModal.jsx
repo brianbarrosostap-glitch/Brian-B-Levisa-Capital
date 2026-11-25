@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { C, adminStatus, FONT_MONO } from '../../tokens'
-import { Modal, ModalBody, ModalFooter, Btn, Badge, Field, TimelineStep, useIsMobile } from '../../components/ui'
+import { Modal, ModalBody, ModalFooter, Btn, Badge, Field, TimelineStep, Spinner, useIsMobile } from '../../components/ui'
 import { supabase, callFunction } from '../../lib/supabase'
 import FileLink from '../../components/FileLink'
+import { errorMessage } from '../../lib/errors'
 import { invoiceFileRef, chequeFileRef } from '../../lib/files'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -97,6 +98,7 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
   const [confNumber, setConfNumber]   = useState('')
   const [confError, setConfError]     = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+  const [actionError, setActionError]     = useState('')
 
   const STATUS_LABELS_MODAL = {
     'Submitted to Ryder': 'Submitted to Ryder',
@@ -123,6 +125,7 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
 
   const handleSave = async () => {
     setActionLoading(true)
+    setActionError('')
     try {
       await callFunction('mark-invoice-status', {
         invoice_id: inv.id,
@@ -135,7 +138,10 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
       resetFooter()
       fetchDetail()
       onRefresh?.()
-    } catch (e) { console.error(e) }
+    } catch (e) {
+      console.error(e)
+      setActionError(await errorMessage(e, 'The status could not be updated.'))
+    }
     setActionLoading(false)
   }
 
@@ -407,10 +413,11 @@ export default function InvoiceDetailModal({ invoice: inv, onClose, onRefresh })
                 <span style={{ color: C.textMut }}> · Conf # <strong style={{ fontFamily: FONT_MONO, color: C.text }}>{confNumber}</strong></span>
               )}
               ?
+              {actionError && <div role="alert" style={{ color: C.red, fontSize: 13.5, marginTop: 4 }}>{actionError}</div>}
             </div>
-            <Btn variant="secondary" onClick={() => setFooterStep('input')} disabled={actionLoading}>← Back</Btn>
+            <Btn variant="secondary" onClick={() => { setActionError(''); setFooterStep('input') }} disabled={actionLoading}>← Back</Btn>
             <Btn onClick={handleSave} disabled={actionLoading}>
-              {actionLoading ? 'Saving…' : 'Yes, Update'}
+              {actionLoading ? <><Spinner /> {pendingStatus === 'Resubmitted' ? 'Sending to Ryder…' : 'Saving…'}</> : 'Yes, Update'}
             </Btn>
           </>
         )}

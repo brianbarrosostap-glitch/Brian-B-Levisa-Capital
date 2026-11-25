@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { LayoutDashboard, ListOrdered, Receipt, ScrollText, FileSearch, Archive, Trash2, Bot, BookOpen } from 'lucide-react'
-import { Shell, Topbar, PageContent, NavItem } from '../../components/ui'
+import { LayoutDashboard, ListOrdered, Receipt, ScrollText, FileSearch, Archive, Trash2, Bot, BookOpen, BellRing, Plug } from 'lucide-react'
+import { Shell, Topbar, PageContent, NavItem, NavSection } from '../../components/ui'
 import NotificationBell from '../../components/NotificationBell'
 import InstallPWA from '../../components/InstallPWA'
 import { supabase } from '../../lib/supabase'
@@ -15,18 +15,35 @@ import PastInvoices from './PastInvoices'
 import DeletedInvoices from './DeletedInvoices'
 import Automation from './Automation'
 import HowItWorks from './HowItWorks'
+import Alerts from './Alerts'
+import Connections from './Connections'
+import { countRecentAlerts } from '../../lib/alerts'
 
-const NAV = [
-  { key: 'dashboard',  label: 'Dashboard',        icon: LayoutDashboard },
-  { key: 'master',     label: 'Master',           icon: ListOrdered },
-  { key: 'cheques',    label: 'Cheques',          icon: Receipt },
-  { key: 'review',     label: 'Upload Review',    icon: FileSearch },
-  { key: 'past',       label: 'Past Invoices',    icon: Archive },
-  { key: 'deleted',    label: 'Deleted Invoices', icon: Trash2 },
-  { key: 'automation', label: 'Automation',       icon: Bot },
-  { key: 'audit',      label: 'Audit Logs',       icon: ScrollText },
-  { key: 'guide',      label: 'How It Works', icon: BookOpen },
+// Sidebar, grouped. Order inside each group is the old order.
+const NAV_GROUPS = [
+  { label: null, items: [
+    { key: 'dashboard',   label: 'Dashboard',        icon: LayoutDashboard },
+    { key: 'alerts',      label: 'Alerts',           icon: BellRing },
+  ] },
+  { label: 'Invoices', items: [
+    { key: 'master',      label: 'Master',           icon: ListOrdered },
+    { key: 'review',      label: 'Upload Review',    icon: FileSearch },
+    { key: 'past',        label: 'Past Invoices',    icon: Archive },
+    { key: 'deleted',     label: 'Deleted Invoices', icon: Trash2 },
+  ] },
+  { label: 'Payments', items: [
+    { key: 'cheques',     label: 'Cheques',          icon: Receipt },
+  ] },
+  { label: 'System', items: [
+    { key: 'automation',  label: 'Automation',       icon: Bot },
+    { key: 'connections', label: 'Connections',      icon: Plug },
+    { key: 'audit',       label: 'Audit Logs',       icon: ScrollText },
+  ] },
+  { label: 'Help', items: [
+    { key: 'guide',       label: 'How It Works',     icon: BookOpen },
+  ] },
 ]
+const NAV = NAV_GROUPS.flatMap(g => g.items)
 
 const TITLES = {
   dashboard:  { title: 'Dashboard' },
@@ -37,11 +54,14 @@ const TITLES = {
   deleted:    { title: 'Deleted Invoices', subtitle: 'Removed from the portal — restorable' },
   automation: { title: 'Automation', subtitle: 'Settings, emails and job runs' },
   audit:      { title: 'Audit Logs', subtitle: 'Who did what, when' },
+  alerts:      { title: 'Alerts', subtitle: 'Every error and problem in one place' },
+  connections: { title: 'Connections', subtitle: 'Outside services the portal depends on' },
   guide:      { title: 'How the System Works', subtitle: 'Every step, email and screen explained' },
 }
 
 const VALID = NAV.map(n => n.key)
 const REVIEW_POLL_MS = 30000
+const ALERTS_POLL_MS = 120000
 
 export default function AdminApp({ user, onSignOut }) {
   // Persist the active tab so a refresh stays on the same screen.
@@ -50,6 +70,7 @@ export default function AdminApp({ user, onSignOut }) {
     return VALID.includes(saved) ? saved : 'dashboard'
   })
   const [reviewCount, setReviewCount] = useState(null)
+  const [alertCount, setAlertCount]   = useState(null)
 
   useEffect(() => { localStorage.setItem('admin.page', page) }, [page])
 
@@ -68,16 +89,28 @@ export default function AdminApp({ user, onSignOut }) {
   }, [])
   useEffect(() => { fetchReviewCount() }, [page])
 
-  const badges = { review: reviewCount }
+  // Live "Alerts" badge: connection problems + errors from the last 24 hours.
+  const fetchAlertCount = () => countRecentAlerts().then(setAlertCount).catch(() => {})
+  useEffect(() => {
+    fetchAlertCount()
+    const t = setInterval(() => { if (!document.hidden) fetchAlertCount() }, ALERTS_POLL_MS)
+    return () => clearInterval(t)
+  }, [])
+
+  const badges = { review: reviewCount, alerts: alertCount }
 
   // Dashboard tiles / to-dos → Master with filters pre-set.
   const openMaster = (filters) => { presetMasterFilters(filters); setPage('master') }
 
   const NavItems = (
     <>
-      {NAV.map(n => (
-        <NavItem key={n.key} icon={n.icon} label={n.label} active={page === n.key}
-          badge={badges[n.key] > 0 ? badges[n.key] : null} onClick={() => setPage(n.key)} />
+      {NAV_GROUPS.map(g => (
+        <NavSection key={g.label || 'main'} label={g.label}>
+          {g.items.map(n => (
+            <NavItem key={n.key} icon={n.icon} label={n.label} active={page === n.key}
+              badge={badges[n.key] > 0 ? badges[n.key] : null} onClick={() => setPage(n.key)} />
+          ))}
+        </NavSection>
       ))}
     </>
   )
@@ -120,6 +153,8 @@ export default function AdminApp({ user, onSignOut }) {
         {page === 'automation' && <Automation />}
         {page === 'audit'      && <AuditLogs />}
         {page === 'guide'      && <HowItWorks onNavigate={setPage} />}
+        {page === 'alerts'      && <Alerts onNavigate={setPage} onChanged={fetchAlertCount} />}
+        {page === 'connections' && <Connections onChanged={fetchAlertCount} />}
       </PageContent>
     </Shell>
   )

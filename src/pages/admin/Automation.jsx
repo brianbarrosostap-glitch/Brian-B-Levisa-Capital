@@ -31,6 +31,7 @@ const SETTINGS = [
   { key: 'rzr_reply_senders', label: 'RZR reply senders',         type: 'array',  hint: 'Comma-separated — replies from these addresses can approve an advance' },
   { key: 'admin_alert_email', label: 'Admin alert email',         type: 'string', hint: 'Receives “not approved” and failure alerts' },
   { key: 'ryder_ap_email',    label: 'Ryder AP email',            type: 'string', hint: 'Invoices are submitted here' },
+  { key: 'ryder_confirmation_senders', label: 'Ryder confirmation senders', type: 'array', hint: 'Comma-separated — “Invoice Confirmation from Ryder” emails from these addresses are read (Docufree: workflow@docufree.com)' },
   { key: 'auto_paid_hours',   label: 'Auto-paid after (hours)',   type: 'number', hint: 'Advance Agreed → Advance Paid' },
   { key: 'ryder_wait_days',   label: 'Send to Ryder after (days)', type: 'number', hint: 'Days after Advance Paid' },
   { key: 'resubmit_hours',    label: 'Resubmit every (hours)',    type: 'number', hint: 'Until Ryder acknowledges' },

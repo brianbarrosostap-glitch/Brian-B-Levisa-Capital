@@ -98,6 +98,15 @@ export async function fetchEmails(query: string, limit = 50): Promise<GmailMessa
   return out
 }
 
+/** Marks a message as read (removes Gmail's UNREAD label) — what n8n did after handling an email. */
+export async function markEmailRead(messageId: string): Promise<void> {
+  await composioExecute('GMAIL_ADD_LABEL_TO_EMAIL', 'gmail', {
+    message_id: messageId,
+    add_label_ids: [],
+    remove_label_ids: ['UNREAD'],
+  })
+}
+
 // ── Drive ────────────────────────────────────────────────────
 
 export function driveFileIdFromUrl(url: string): string | null {
